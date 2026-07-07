@@ -1332,7 +1332,10 @@ function renderFechamento(){
   h+=`<div class="grid g4">${kpi('Vendas salão',brl(salaoTotal))}${kpi('Vendas delivery',brl(delivery))}${kpi('Total geral',brl(salaoTotal+delivery))}${kpi('Dinheiro (espécie)',brl(salaoDin),'só no salão')}</div>`;
   // ===== CONCILIAÇÃO TOTAL (a que fecha de verdade) =====
   const close=fechClose.filter(x=>x.unit_id===curUnit&&x.period_start===sel)[0];
-  const cash=close?(+close.cash_counted):0, pixRec=close?(+close.pix_received):0, brendiRec=close?(+close.brendi_received):0;
+  const cash=(close&&+close.cash_counted>0)?(+close.cash_counted):(salaoDin+delivDin);
+  const pixRec=(close&&+close.pix_received>0)?(+close.pix_received):salaoPix;
+  const brendiRec=(close&&+close.brendi_received>0)?(+close.brendi_received):delivOnline;
+  const usingReported=!(close&&(+close.cash_counted>0||+close.pix_received>0||+close.brendi_received>0));
   const totVendas=salaoTotal+delivery;
   const totRecebido=machCartao+pixRec+brendiRec+cash;
   const diffT=totVendas-totRecebido;
@@ -1343,11 +1346,11 @@ function renderFechamento(){
       <div><div class="lbl muted" style="font-size:12px">Total vendido (salão + delivery)</div><div style="font-size:22px;font-weight:700">${brl(totVendas)}</div></div>
       <div style="font-size:20px;color:var(--mut)">vs</div>
       <div><div class="lbl muted" style="font-size:12px">Total que entrou</div><div style="font-size:22px;font-weight:700">${brl(totRecebido)}</div>
-        <div class="bl muted">cartão maquininha ${brl(machCartao)} · Pix ${brl(pixRec)} · Brendi ${brl(brendiRec)} · dinheiro ${brl(cash)}</div></div>
+        <div class="bl muted">cartão maquininha ${brl(machCartao)} · Pix ${brl(pixRec)} · Brendi ${brl(brendiRec)} · dinheiro ${brl(cash)}${usingReported?' <span style="color:var(--gold)">(dos relatórios)</span>':''}</div></div>
       <div style="font-size:20px;color:var(--mut)">=</div>
       <div><div class="lbl muted" style="font-size:12px">Diferença</div><div><span class="badge ${clsT}" style="font-size:15px">${brl(diffT)}</span></div></div>
     </div>
-    <div class="hint">${!close?'Preencha a <b>conferência do caixa</b> acima (dinheiro contado, Pix e Brendi do extrato) para fechar o total.':(Math.abs(diffT)<100?'✓ Fecha. Tudo que foi vendido entrou — nada falta.':(diffT>0?'⚠️ Vendeu <b>'+brl(diffT)+'</b> a mais do que entrou. Falta esse valor: pode ser dinheiro não contado, Pix/Brendi não lançado, ou venda não recebida. Investigar.':'⚠️ Entrou <b>'+brl(-diffT)+'</b> a mais do que o registrado como venda. Verifique se todas as vendas foram lançadas no PDV/Brendi.'))}</div>
+    <div class="hint">${usingReported?'Pix, Brendi e dinheiro vêm dos <b>relatórios</b> (Yooga/Brendi). Nesse modo a diferença reflete só o cartão. Preencha a <b>conferência do caixa</b> (dinheiro contado + Pix/Brendi do extrato) para validar contra o que realmente entrou.':(Math.abs(diffT)<100?'✓ Fecha. Tudo que foi vendido entrou — nada falta.':(diffT>0?'⚠️ Vendeu <b>'+brl(diffT)+'</b> a mais do que entrou. Falta esse valor: pode ser dinheiro não contado, Pix/Brendi não lançado, ou venda não recebida. Investigar.':'⚠️ Entrou <b>'+brl(-diffT)+'</b> a mais do que o registrado como venda. Verifique se todas as vendas foram lançadas no PDV/Brendi.'))}</div>
   </div>`;
   // Conciliação de cartão (só cartão — mistura salão + delivery na maquininha)
   const cls=Math.abs(gap)<50?'b-good':(Math.abs(gap)<300?'b-warn':'b-bad');
@@ -1382,7 +1385,13 @@ function renderFechamento(){
       const cl=fechClose.find(x=>x.unit_id===curUnit&&x.period_start===p)||{};
       const vend=pv.reduce((s,x)=>s+(+x.gross),0);
       const card=mc.filter(x=>x.method==='credito'||x.method==='debito').reduce((s,x)=>s+(+x.gross),0);
-      const ent=card+(+cl.cash_counted||0)+(+cl.pix_received||0)+(+cl.brendi_received||0);
+      const pPix=pv.filter(x=>x.source==='salao'&&x.method==='pix').reduce((s,x)=>s+(+x.gross),0);
+      const pOnline=pv.filter(x=>x.source==='delivery'&&x.method==='online').reduce((s,x)=>s+(+x.gross),0);
+      const pDin=pv.filter(x=>x.method==='dinheiro').reduce((s,x)=>s+(+x.gross),0);
+      const eCash=(+cl.cash_counted>0)?(+cl.cash_counted):pDin;
+      const ePix=(+cl.pix_received>0)?(+cl.pix_received):pPix;
+      const eBrendi=(+cl.brendi_received>0)?(+cl.brendi_received):pOnline;
+      const ent=card+eCash+ePix+eBrendi;
       const d=vend-ent, inf=pv[0]||mc[0]||{};
       h+=`<tr><td>${fmtBr(p)} a ${fmtBr(inf.period_end)}</td><td class="r">${brl(vend)}</td><td class="r">${ent?brl(ent):'—'}</td><td class="r">${ent?('<span class="badge '+(Math.abs(d)<100?'b-good':'b-warn')+'">'+brl(d)+'</span>'):'—'}</td></tr>`;});
     h+='</tbody></table></div>';
