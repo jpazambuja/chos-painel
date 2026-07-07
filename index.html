@@ -213,6 +213,7 @@ tr:last-child td{border-bottom:none}
         <div style="display:flex;align-items:flex-end"><div id="bankMatch" class="hint" style="margin:0"></div></div>
       </div>
     </div>
+    <div id="ratesArea"></div>
     <div id="bankArea"></div>
   </section>
 
@@ -294,7 +295,7 @@ const FICHAS=[
 
 /* ===================== ESTADO ===================== */
 let session=null, profile=null, units=[], curUnit=null;
-let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[], reports=[], bank=[];
+let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[], reports=[], bank=[], cardRates=[];
 let clockTimer=null, realtimeCh=null, histChart=null, repChart=null;
 const brl=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
 const brl2=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -399,7 +400,7 @@ async function loadUnits(){
 }
 function onUnitChange(){curUnit=document.getElementById('unitSel').value;renderAll();}
 async function loadAll(){
-  const [pr,sh,sc,pu,tk,gl,fi,rp,bk]=await Promise.all([
+  const [pr,sh,sc,pu,tk,gl,fi,rp,bk,cr]=await Promise.all([
     sb.from('profiles').select('*').order('created_at'),
     sb.from('shifts').select('*').order('sort'),
     sb.from('schedule').select('*'),
@@ -409,9 +410,10 @@ async function loadAll(){
     sb.from('finance').select('*').order('due_date'),
     sb.from('reports').select('*').order('ref_month'),
     sb.from('bank_tx').select('*').order('tx_date'),
+    sb.from('card_rates').select('*').order('acquirer'),
   ]);
   emps=(pr.data||[]).filter(p=>p.role!=='gestor');
-  shifts=sh.data||[]; punches=pu.data||[]; tasks=tk.data||[]; goals=gl.data||[]; finance=fi.data||[]; reports=rp.data||[]; bank=bk.data||[];
+  shifts=sh.data||[]; punches=pu.data||[]; tasks=tk.data||[]; goals=gl.data||[]; finance=fi.data||[]; reports=rp.data||[]; bank=bk.data||[]; cardRates=cr.data||[];
   schedule={}; (sc.data||[]).forEach(r=>schedule[r.employee_id+'|'+r.day]=r.value);
 }
 async function loadEmpData(){
@@ -881,7 +883,42 @@ async function handleBankFile(file){
 async function setBankCat(id,cat){await sb.from('bank_tx').update({category:cat}).eq('id',id);const t=bank.find(x=>x.id===id);if(t)t.category=cat;renderBanco();}
 async function toggleRec(id,v){await sb.from('bank_tx').update({reconciled:!v}).eq('id',id);await loadAll();renderBanco();}
 async function delBank(id){if(!confirm('Excluir lançamento do extrato?'))return;await sb.from('bank_tx').delete().eq('id',id);await loadAll();renderBanco();}
+async function setRate(id,field,v){const patch={};patch[field]=parseFloat((v||'0').replace(',','.'))||0;
+  await sb.from('card_rates').update(patch).eq('id',id);const r=cardRates.find(x=>x.id===id);if(r)r[field]=patch[field];renderRatesCalc();}
+async function addRate(){const acq=val('nrAcq'),met=val('nrMet');if(!acq||!met)return alert('Informe adquirente e modalidade.');
+  await sb.from('card_rates').insert({unit_id:curUnit,acquirer:acq,method:met,rate_pct:parseFloat(val('nrPct').replace(',','.'))||0,days:parseInt(val('nrDays'))||1});
+  await loadAll();renderBanco();}
+async function delRate(id){if(!confirm('Excluir taxa?'))return;await sb.from('card_rates').delete().eq('id',id);await loadAll();renderBanco();}
+function renderRatesCalc(){
+  const g=document.getElementById('rcGross'), sel=document.getElementById('rcRate'), out=document.getElementById('rcOut');
+  if(!g||!sel||!out)return;
+  const gross=parseFloat((g.value||'').replace(/\./g,'').replace(',','.'))||0;
+  const r=cardRates.find(x=>x.id===sel.value);
+  if(gross>0&&r){const liq=gross*(1-(+r.rate_pct)/100);const taxa=gross-liq;
+    out.innerHTML=`Bruto ${brl2(gross)} · taxa ${(+r.rate_pct).toFixed(2)}% = <b style="color:var(--red)">−${brl2(taxa)}</b> → líquido a cair <b style="color:var(--greenl)">${brl2(liq)}</b> em ~${r.days} dia(s).`;}
+  else out.textContent='Informe o valor bruto e escolha a taxa.';
+}
+function renderRates(){
+  const rows=cardRates.filter(r=>!r.unit_id||r.unit_id===curUnit);
+  let h='<div class="card"><div class="sec-title" style="margin-top:0">Taxas de cartão (MDR) — Itaú · Sicoob · Brendi</div>';
+  h+='<div style="overflow:auto"><table><thead><tr><th>Adquirente</th><th>Modalidade</th><th class="r">Taxa %</th><th class="r">Prazo (dias)</th><th></th></tr></thead><tbody>';
+  rows.forEach(r=>{h+=`<tr><td>${esc(r.acquirer)}</td><td>${esc(r.method)}</td>
+    <td class="r"><input value="${(+r.rate_pct).toString().replace('.',',')}" style="width:80px;text-align:right;padding:5px" onchange="setRate('${r.id}','rate_pct',this.value)"></td>
+    <td class="r"><input value="${r.days}" style="width:70px;text-align:right;padding:5px" onchange="setRate('${r.id}','days',this.value)"></td>
+    <td><span class="del" onclick="delRate('${r.id}')">×</span></td></tr>`;});
+  h+='</tbody></table></div>';
+  h+=`<div class="addbar"><input id="nrAcq" placeholder="Adquirente" style="max-width:130px"><input id="nrMet" placeholder="Modalidade" style="max-width:150px">
+    <input id="nrPct" placeholder="Taxa %" style="max-width:90px"><input id="nrDays" placeholder="Prazo" style="max-width:80px">
+    <button class="primary" onclick="addRate()">＋ Taxa</button></div>`;
+  // calculadora de líquido
+  h+=`<div class="sec-title">Calculadora de líquido</div>
+    <div class="addbar"><input id="rcGross" placeholder="valor bruto R$" style="max-width:160px" oninput="renderRatesCalc()">
+    <select id="rcRate" style="width:auto" onchange="renderRatesCalc()">${rows.map(r=>`<option value="${r.id}">${esc(r.acquirer)} · ${esc(r.method)}</option>`).join('')}</select></div>
+    <div id="rcOut" class="hint"></div></div>`;
+  const area=document.getElementById('ratesArea');if(area){area.innerHTML=h;renderRatesCalc();}
+}
 function renderBanco(){
+  renderRates();
   const rows=bank.filter(b=>!b.unit_id||b.unit_id===curUnit);
   const cats=[...new Set(rows.map(b=>b.category).filter(Boolean))];
   const dl=document.getElementById('bankCats');if(dl)dl.innerHTML=cats.map(c=>`<option value="${esc(c)}">`).join('');
