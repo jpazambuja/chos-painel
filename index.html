@@ -1376,8 +1376,16 @@ function renderFechamento(){
   const bankCard=acc=>bankRows.filter(b=>b.account===acc&&b.tx_date>=sel&&b.tx_date<=winEnd).reduce((s,b)=>s+(+b.amount),0);
   let mrows2='';[['Itaú','Itaú (Rede)'],['Sicoob','Sicoob (SIPAG)']].forEach(([acc,lbl])=>{const mn=machNet(acc),bc=bankCard(acc);if(mn||bc){const d=bc-mn;mrows2+=`<tr><td>${lbl}</td><td class="r">${brl(mn)}</td><td class="r">${bc?brl(bc):'—'}</td><td class="r">${bc?('<span class="badge '+(Math.abs(d)<50?'b-good':'b-warn')+'">'+brl(d)+'</span>'):'<span class="muted">suba o extrato</span>'}</td></tr>`;}});
   if(mrows2){h+='<div class="sec-title">Conciliação por banco — maquininha (líq.) × caiu no extrato</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Banco</th><th class="r">Maquininha (líq.)</th><th class="r">Caiu no extrato</th><th class="r">Diferença</th></tr></thead><tbody>'+mrows2+'</tbody></table></div><div class="hint">Rede cai no Itaú, SIPAG no Sicoob. Crédito é D+1, então a janela do extrato considera o período + 7 dias. Obs.: o líquido do Sicoob é aproximado enquanto for lançado manual (sem a taxa aplicada).</div>';}
-  // Pix e delivery
-  h+=`<div class="hint gold" style="margin-top:12px">Pix no salão: <b>${brl(salaoPix)}</b> · Delivery (Brendi): <b>${brl(delivery)}</b>. Estes conferem contra os recebimentos Pix/Brendi no extrato (aba Banco).</div>`;
+  // Conciliação de recebimentos — Pix e Brendi × extrato
+  const maqPix=mach.filter(x=>x.method==='pix').reduce((s,x)=>s+(+x.gross),0);
+  const expPix=salaoPix+maqPix;
+  const extPix=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Pix'&&b.tx_date>=sel&&b.tx_date<=pInfo.period_end).reduce((s,b)=>s+(+b.amount),0);
+  const extBrendi=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Brendi/Delivery'&&b.tx_date>=sel&&b.tx_date<=winEnd).reduce((s,b)=>s+(+b.amount),0);
+  const rrow=(lbl,exp,ext,tol,note)=>{const d=ext-exp;return `<tr><td>${lbl}</td><td class="r">${brl(exp)}</td><td class="r">${ext?brl(ext):'—'}</td><td class="r">${ext?('<span class="badge '+(Math.abs(d)<tol?'b-good':'b-warn')+'">'+brl(d)+'</span>'):'<span class="muted">suba o extrato</span>'}</td></tr>${note?`<tr><td colspan="4" class="muted" style="font-size:11px;padding-top:0">${note}</td></tr>`:''}`;};
+  h+='<div class="sec-title">Conciliação de recebimentos — esperado × caiu no extrato</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Recebimento</th><th class="r">Esperado (relatório)</th><th class="r">Caiu no extrato</th><th class="r">Diferença</th></tr></thead><tbody>';
+  h+=rrow('Pix (salão'+(maqPix?' + maquininha':'')+')',expPix,extPix,50,'Pix cai D+0 direto na conta. Deve bater com o Pix do Yooga'+(maqPix?' + o Pix capturado nas maquininhas':'')+'.');
+  h+=rrow('Brendi — repasse online',delivOnline,extBrendi,60,'O repasse do Brendi vem <b>líquido</b> (menos taxa ~4-6%) e inclui o Pix pago no app — por isso a diferença negativa é a taxa, não vazamento. O Pix do Brendi NÃO aparece na linha de Pix acima.');
+  h+='</tbody></table></div>';
   // M3: Histórico de fechamentos (todos os períodos)
   if(periods.length>1){
     h+='<div class="sec-title">Histórico de fechamentos</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Período</th><th class="r">Vendido</th><th class="r">Entrou</th><th class="r">Diferença</th></tr></thead><tbody>';
