@@ -122,7 +122,7 @@ tr:last-child td{border-bottom:none}
 <div id="adminApp" class="wrap" style="display:none">
   <div class="topbar">
     <div class="brand"><span class="wm">CH.OSEN</span><span class="tg">Painel Executivo</span></div>
-    <div class="who"><span class="pill" id="whoName">Gestor</span><button class="sm" onclick="logout()">Sair</button></div>
+    <div class="who"><span class="pill" id="whoName">Gestor</span><button class="sm" onclick="changePwd()">Trocar senha</button><button class="sm" onclick="logout()">Sair</button></div>
   </div>
   <div class="unitpick"><span class="muted">Unidade:</span><select id="unitSel" onchange="onUnitChange()"></select></div>
   <div class="tabs" id="adminTabs">
@@ -278,7 +278,7 @@ const FICHAS=[
 
 /* ===================== ESTADO ===================== */
 let session=null, profile=null, units=[], curUnit=null;
-let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[];
+let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[], reports=[];
 let clockTimer=null, realtimeCh=null, histChart=null, repChart=null;
 const brl=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
 const brl2=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -326,6 +326,14 @@ async function enterFromUser(user,expected){
   session=prof.role==='gestor'?{role:'admin'}:{role:'emp',empId:user.id};
   await applySession();
   return true;
+}
+async function changePwd(){
+  const p=prompt('Nova senha (mínimo 6 caracteres):');
+  if(!p)return;
+  if(p.length<6)return alert('A senha precisa ter ao menos 6 caracteres.');
+  const {error}=await sb.auth.updateUser({password:p});
+  if(error)return alert('Erro ao trocar senha: '+error.message);
+  alert('Senha atualizada com sucesso.');
 }
 async function logout(){
   await sb.auth.signOut();session=null;profile=null;
@@ -375,7 +383,7 @@ async function loadUnits(){
 }
 function onUnitChange(){curUnit=document.getElementById('unitSel').value;renderAll();}
 async function loadAll(){
-  const [pr,sh,sc,pu,tk,gl,fi]=await Promise.all([
+  const [pr,sh,sc,pu,tk,gl,fi,rp]=await Promise.all([
     sb.from('profiles').select('*').order('created_at'),
     sb.from('shifts').select('*').order('sort'),
     sb.from('schedule').select('*'),
@@ -383,9 +391,10 @@ async function loadAll(){
     sb.from('tasks').select('*').order('sort'),
     sb.from('goals').select('*').order('sort'),
     sb.from('finance').select('*').order('due_date'),
+    sb.from('reports').select('*').order('ref_month'),
   ]);
   emps=(pr.data||[]).filter(p=>p.role!=='gestor');
-  shifts=sh.data||[]; punches=pu.data||[]; tasks=tk.data||[]; goals=gl.data||[]; finance=fi.data||[];
+  shifts=sh.data||[]; punches=pu.data||[]; tasks=tk.data||[]; goals=gl.data||[]; finance=fi.data||[]; reports=rp.data||[];
   schedule={}; (sc.data||[]).forEach(r=>schedule[r.employee_id+'|'+r.day]=r.value);
 }
 async function loadEmpData(){
@@ -562,9 +571,8 @@ async function saveReport(){
   if(error)return alert('Erro ao salvar: '+error.message);
   alert('Relatório salvo no histórico.');await loadAll();renderHist();
 }
-async function renderHist(){
-  const {data}=await sb.from('reports').select('*').eq('unit_id',curUnit).order('ref_month');
-  const rows=data||[];
+function renderHist(){
+  const rows=reports.filter(r=>r.unit_id===curUnit);
   const byMonth={};rows.forEach(r=>{const m=r.ref_month.slice(0,7);byMonth[m]=(byMonth[m]||0)+(+r.total_rev);});
   const labels=Object.keys(byMonth).sort();
   const vals=labels.map(m=>Math.round(byMonth[m]));
@@ -730,6 +738,12 @@ async function addFinance(){
 }
 async function togglePaid(id,paid){await sb.from('finance').update({paid:!paid,paid_at:!paid?new Date().toISOString():null}).eq('id',id);await loadAll();renderFinance();renderOverview();}
 async function delFinance(id){if(!confirm('Excluir lançamento?'))return;await sb.from('finance').delete().eq('id',id);await loadAll();renderFinance();renderOverview();}
+async function editFinance(id){const f=finance.find(x=>x.id===id);if(!f)return;
+  const nd=prompt('Descrição:',f.description);if(nd===null)return;
+  const nv=prompt('Valor R$:',f.amount);if(nv===null)return;
+  const amount=parseFloat((nv||'').replace(/\./g,'').replace(',','.'))||0;
+  await sb.from('finance').update({description:nd||f.description,amount}).eq('id',id);
+  await loadAll();renderFinance();renderOverview();}
 async function repeatFinance(id){const f=finance.find(x=>x.id===id);if(!f)return;
   let due=null;
   if(f.due_date){const d=new Date(f.due_date+'T00:00');d.setMonth(d.getMonth()+1);due=d.toISOString().slice(0,10);}
@@ -750,14 +764,36 @@ function renderFinance(){
   const dia=weekDiaristaTotal().total;
   const hoje=new Date(new Date().toDateString());
   const vencidos=rows.filter(f=>f.kind==='pagar'&&!f.paid&&f.due_date&&new Date(f.due_date+'T00:00')<hoje).reduce((s,f)=>s+(+f.amount),0);
+  const fatMes=reports.filter(r=>r.unit_id===curUnit&&r.ref_month.slice(0,7)===mo).reduce((s,r)=>s+(+r.total_rev),0);
+  const contasMes=pagarMes+dia;
+  const resultado=fatMes-contasMes;
   const kp=document.getElementById('finKpis');
-  if(kp)kp.innerHTML=kpi('A pagar no mês',brl(pagarMes+dia),'inclui diaristas da semana')
+  if(kp)kp.innerHTML=kpi('A pagar no mês',brl(contasMes),'inclui diaristas da semana')
     +kpi('A receber no mês',brl(receberMes))
     +kpi('Vencidos (pendentes)',brl(vencidos),vencidos>0?'⚠️ atenção':'em dia')
-    +kpi('Saldo do mês',brl(receberMes-pagarMes-dia),'a receber − a pagar');
+    +kpi('Pago no mês',brl(pagoMes),'já quitado');
   const area=document.getElementById('finArea');
+  // Resultado operacional do mês (faturamento dos relatórios − contas a pagar)
+  let h='';
+  h+=`<div class="card" style="background:${resultado>=0?'#EAF1EA':'#F9ECE9'};border-color:${resultado>=0?'var(--greenl)':'var(--red)'}">
+    <div class="sec-title" style="margin-top:0">Resultado operacional — ${fmtMonth(mo)}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:baseline">
+      <div><div class="lbl muted" style="font-size:12px">Faturamento (relatórios)</div><div style="font-size:20px;font-weight:600">${brl(fatMes)}</div></div>
+      <div style="font-size:20px;color:var(--mut)">−</div>
+      <div><div class="lbl muted" style="font-size:12px">Contas a pagar + diaristas</div><div style="font-size:20px;font-weight:600">${brl(contasMes)}</div></div>
+      <div style="font-size:20px;color:var(--mut)">=</div>
+      <div><div class="lbl muted" style="font-size:12px">Resultado</div><div style="font-size:24px;font-weight:700;color:${resultado>=0?'var(--greenl)':'var(--red)'}">${brl(resultado)}</div></div>
+    </div>
+    <div class="hint">${fatMes?'Receita − contas a pagar do mês. Não é lucro contábil (não desconta CMV nem impostos aqui) — é o caixa operacional do mês.':'Suba e salve um relatório de vendas deste mês (aba Relatórios) para o faturamento entrar aqui.'}</div></div>`;
+  // Resumo por categoria (a pagar do mês)
+  const catMap={};mrows.filter(f=>f.kind==='pagar').forEach(f=>{catMap[f.category]=(catMap[f.category]||0)+(+f.amount);});
+  const catList=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  if(catList.length){h+='<div class="sec-title">A pagar por categoria — '+fmtMonth(mo)+'</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Categoria</th><th class="r">Total</th></tr></thead><tbody>';
+    catList.forEach(([c,v])=>h+=`<tr><td>${esc(c)}</td><td class="r">${brl2(v)}</td></tr>`);
+    h+='</tbody></table></div>';}
+  // Lançamentos
   const list=[...mrows].sort((a,b)=>((a.due_date||'zzz')<(b.due_date||'zzz')?-1:1));
-  let h=`<div class="sec-title">Lançamentos — ${fmtMonth(mo)}</div>`;
+  h+=`<div class="sec-title">Lançamentos — ${fmtMonth(mo)}</div>`;
   if(list.length){h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Tipo</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr></thead><tbody>';
     list.forEach(f=>{const venc=f.due_date?new Date(f.due_date+'T00:00').toLocaleDateString('pt-BR'):'fixo/recorrente';
       const atrasado=f.due_date&&!f.paid&&new Date(f.due_date+'T00:00')<hoje;
@@ -766,7 +802,7 @@ function renderFinance(){
         <td>${esc(f.description)}</td><td class="muted">${esc(f.category)}</td>
         <td class="r">${brl2(f.amount)}</td><td>${venc}${atrasado?' <span class="badge b-bad">vencido</span>':''}</td>
         <td><span class="st ${f.paid?'st-feito':'st-afazer'}" style="cursor:pointer" onclick="togglePaid('${f.id}',${f.paid})">${f.paid?'Pago':'Pendente'}</span></td>
-        <td><button class="sm" onclick="repeatFinance('${f.id}')" title="repetir no mês seguinte">repetir</button> <span class="del" onclick="delFinance('${f.id}')">×</span></td></tr>`;});
+        <td><button class="sm" onclick="editFinance('${f.id}')">editar</button> <button class="sm" onclick="repeatFinance('${f.id}')" title="repetir no mês seguinte">repetir</button> <span class="del" onclick="delFinance('${f.id}')">×</span></td></tr>`;});
     h+='</tbody></table></div>';}
   else h+='<div class="muted">Nenhum lançamento neste mês. Adicione acima.</div>';
   area.innerHTML=h;
