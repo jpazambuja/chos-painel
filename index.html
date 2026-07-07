@@ -186,13 +186,13 @@ tr:last-child td{border-bottom:none}
   <section id="financeiro" class="pane">
     <h2>Financeiro</h2>
     <div class="tabs" style="margin:8px 0 4px"><button class="finsub" data-f="contas" onclick="showFin('contas')">Contas</button><button class="finsub" data-f="banco" onclick="showFin('banco')">Banco</button><button class="finsub" data-f="taxas" onclick="showFin('taxas')">Taxas de cartão</button><button class="finsub" data-f="fechamento" onclick="showFin('fechamento')">Fechamento</button></div>
-    <div class="sub">Contas a pagar e a receber. Diaristas da semana entram automaticamente no total a pagar.</div>
+    <div class="sub">Contas a pagar (não trabalhamos com venda a prazo). O que entrou aparece em "Recebido pelos extratos". Diaristas da semana entram automaticamente no total a pagar.</div>
     <div class="unitpick" style="margin-top:10px"><span class="muted">Mês:</span><input id="fMonth" type="month" style="width:auto" onchange="renderFinance()"><span class="muted" style="margin-left:8px">lançamentos sem vencimento aparecem em todos os meses</span></div>
     <div class="grid g4" id="finKpis" style="margin:8px 0 14px"></div>
     <div class="card">
       <div class="sec-title" style="margin-top:0">Novo lançamento</div>
+      <input type="hidden" id="fKind" value="pagar">
       <div class="grid g3">
-        <div><label class="fld">Tipo</label><select id="fKind"><option value="pagar">A pagar</option><option value="receber">A receber</option></select></div>
         <div><label class="fld">Descrição</label><input id="fDesc" placeholder="ex: Fornecedor de carne"></div>
         <div><label class="fld">Categoria</label><input id="fCat" list="finCats" placeholder="ex: Insumos"><datalist id="finCats"></datalist></div>
         <div><label class="fld">Valor R$</label><input id="fAmount" placeholder="0,00"></div>
@@ -893,11 +893,15 @@ function renderFinance(){
   const hoje=new Date(new Date().toDateString());
   const vencidos=rows.filter(f=>f.kind==='pagar'&&!f.paid&&f.due_date&&new Date(f.due_date+'T00:00')<hoje).reduce((s,f)=>s+(+f.amount),0);
   const fatMes=reports.filter(r=>r.unit_id===curUnit&&r.ref_month.slice(0,7)===mo).reduce((s,r)=>s+(+r.total_rev),0);
+  // Recebido pelos extratos (entradas líquidas, exclui transferência interna) no mês
+  const recRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category!=='Transferência interna'&&(b.tx_date||'').slice(0,7)===mo);
+  const recebidoMes=recRows.reduce((s,b)=>s+(+b.amount),0);
+  const recMap={};recRows.forEach(b=>{const c=b.category||'Outros';recMap[c]=(recMap[c]||0)+(+b.amount);});
   const contasMes=pagarMes+dia;
   const resultado=fatMes-contasMes;
   const kp=document.getElementById('finKpis');
   if(kp)kp.innerHTML=kpi('A pagar no mês',brl(contasMes),'inclui diaristas da semana')
-    +kpi('A receber no mês',brl(receberMes))
+    +kpi('Recebido no mês (líq.)',brl(recebidoMes),'entrou pelos extratos')
     +kpi('Vencidos (pendentes)',brl(vencidos),vencidos>0?'⚠️ atenção':'em dia')
     +kpi('Pago no mês',brl(pagoMes),'já quitado');
   const area=document.getElementById('finArea');
@@ -930,6 +934,13 @@ function renderFinance(){
   if(catList.length){h+='<div class="sec-title">A pagar por categoria — '+fmtMonth(mo)+'</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Categoria</th><th class="r">Total</th></tr></thead><tbody>';
     catList.forEach(([c,v])=>h+=`<tr><td>${esc(c)}</td><td class="r">${brl2(v)}</td></tr>`);
     h+='</tbody></table></div>';}
+  // Recebido pelos extratos — por categoria
+  const recList=Object.entries(recMap).sort((a,b)=>b[1]-a[1]);
+  h+=`<div class="sec-title">Recebido pelos extratos — ${fmtMonth(mo)} · total ${brl(recebidoMes)}</div>`;
+  if(recList.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Origem</th><th class="r">Recebido (líq.)</th></tr></thead><tbody>';
+    recList.forEach(([c,v])=>h+=`<tr><td>${esc(c)}</td><td class="r">${brl2(v)}</td></tr>`);
+    h+='</tbody></table></div><div class="hint">Soma das entradas dos extratos (cartão líquido, Pix, Brendi), já sem as transferências internas. Se algum valor parecer estranho, reclassifique na aba Banco.</div>';}
+  else h+='<div class="muted">Nenhuma entrada de extrato neste mês. Importe os extratos na aba Banco.</div>';
   // Lançamentos
   const list=[...mrows].sort((a,b)=>((a.due_date||'zzz')<(b.due_date||'zzz')?-1:1));
   h+=`<div class="sec-title">Lançamentos — ${fmtMonth(mo)}</div>`;
