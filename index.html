@@ -216,7 +216,7 @@ tr:last-child td{border-bottom:none}
       <div class="sec-title" style="margin-top:0">Conferência de recebíveis (maquininhas)</div>
       <div class="grid g3">
         <div><label class="fld">Total esperado no período (relatório das maquininhas)</label><input id="bankExpected" placeholder="0,00" oninput="renderBanco()"></div>
-        <div><label class="fld">Categoria contada como recebimento de cartão</label><input id="bankCardCat" list="bankCats" value="Cartão/Maquininha" oninput="renderBanco()"><datalist id="bankCats"></datalist></div>
+        <div><label class="fld">Categoria contada como recebimento de cartão</label><input id="bankCardCat" list="bankCats" value="Venda Cartão" oninput="renderBanco()"><datalist id="bankCats"></datalist></div>
         <div style="display:flex;align-items:flex-end"><div id="bankMatch" class="hint" style="margin:0"></div></div>
       </div>
     </div>
@@ -897,13 +897,17 @@ function renderFinance(){
   const recRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category!=='Transferência interna'&&(b.tx_date||'').slice(0,7)===mo);
   const recebidoMes=recRows.reduce((s,b)=>s+(+b.amount),0);
   const recMap={};recRows.forEach(b=>{const c=b.category||'Outros';recMap[c]=(recMap[c]||0)+(+b.amount);});
+  // Pago pelos extratos (saídas reais, exclui transferência interna) no mês
+  const pagRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)<0&&b.category!=='Transferência interna'&&(b.tx_date||'').slice(0,7)===mo);
+  const pagoExtrato=Math.abs(pagRows.reduce((s,b)=>s+(+b.amount),0));
+  const pagMap={};pagRows.forEach(b=>{const c=b.category||'Outros';pagMap[c]=(pagMap[c]||0)+Math.abs(+b.amount);});
+  const caixaMes=recebidoMes-pagoExtrato;
   const contasMes=pagarMes+dia;
-  const resultado=fatMes-contasMes;
   const kp=document.getElementById('finKpis');
-  if(kp)kp.innerHTML=kpi('A pagar no mês',brl(contasMes),'inclui diaristas da semana')
-    +kpi('Recebido no mês (líq.)',brl(recebidoMes),'entrou pelos extratos')
-    +kpi('Vencidos (pendentes)',brl(vencidos),vencidos>0?'⚠️ atenção':'em dia')
-    +kpi('Pago no mês',brl(pagoMes),'já quitado');
+  if(kp)kp.innerHTML=kpi('Recebido no mês (líq.)',brl(recebidoMes),'entrou pelos extratos')
+    +kpi('Pago no mês (extratos)',brl(pagoExtrato),'saiu da conta')
+    +kpi('Caixa do mês',brl(caixaMes),caixaMes>=0?'sobrou':'faltou')
+    +kpi('A pagar (planejado)',brl(contasMes),'ainda vai vencer');
   const area=document.getElementById('finArea');
   let h='';
   // Custos fixos mensais (templates recorrentes)
@@ -917,17 +921,17 @@ function renderFinance(){
   h+=`<div class="addbar"><input id="fxDesc" placeholder="descrição (ex: Pró-labore)" style="flex:2"><input id="fxCat" placeholder="categoria" style="max-width:130px"><input id="fxAmount" placeholder="valor R$" style="max-width:110px"><input id="fxDay" placeholder="dia" style="max-width:70px"><button class="primary" onclick="addFixed()">＋ Fixo</button></div>
     <button class="full" onclick="genFixed()" style="margin-top:8px">Lançar custos fixos no mês selecionado</button>
     <div class="hint">Cadastre uma vez. Clique em "lançar no mês" para jogar todos como contas a pagar do mês escolhido acima.</div></div>`;
-  // Resultado operacional do mês (faturamento dos relatórios − contas a pagar)
-  h+=`<div class="card" style="background:${resultado>=0?'#EAF1EA':'#F9ECE9'};border-color:${resultado>=0?'var(--greenl)':'var(--red)'}">
-    <div class="sec-title" style="margin-top:0">Resultado operacional — ${fmtMonth(mo)}</div>
+  // Caixa do mês (extratos): Recebido − Pago
+  h+=`<div class="card" style="background:${caixaMes>=0?'#EAF1EA':'#F9ECE9'};border-color:${caixaMes>=0?'var(--greenl)':'var(--red)'}">
+    <div class="sec-title" style="margin-top:0">Caixa do mês (extratos) — ${fmtMonth(mo)}</div>
     <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:baseline">
-      <div><div class="lbl muted" style="font-size:12px">Faturamento (relatórios)</div><div style="font-size:20px;font-weight:600">${brl(fatMes)}</div></div>
+      <div><div class="lbl muted" style="font-size:12px">Recebido (líq.)</div><div style="font-size:20px;font-weight:600">${brl(recebidoMes)}</div></div>
       <div style="font-size:20px;color:var(--mut)">−</div>
-      <div><div class="lbl muted" style="font-size:12px">Contas a pagar + diaristas</div><div style="font-size:20px;font-weight:600">${brl(contasMes)}</div></div>
+      <div><div class="lbl muted" style="font-size:12px">Pago (saídas)</div><div style="font-size:20px;font-weight:600">${brl(pagoExtrato)}</div></div>
       <div style="font-size:20px;color:var(--mut)">=</div>
-      <div><div class="lbl muted" style="font-size:12px">Resultado</div><div style="font-size:24px;font-weight:700;color:${resultado>=0?'var(--greenl)':'var(--red)'}">${brl(resultado)}</div></div>
+      <div><div class="lbl muted" style="font-size:12px">Caixa</div><div style="font-size:24px;font-weight:700;color:${caixaMes>=0?'var(--greenl)':'var(--red)'}">${brl(caixaMes)}</div></div>
     </div>
-    <div class="hint">${fatMes?'Receita − contas a pagar do mês. Não é lucro contábil (não desconta CMV nem impostos aqui) — é o caixa operacional do mês.':'Suba e salve um relatório de vendas deste mês (aba Relatórios) para o faturamento entrar aqui.'}</div></div>`;
+    <div class="hint">Dinheiro que entrou menos o que saiu da conta neste mês, pelos extratos (sem transferências internas). É o caixa real — não é lucro contábil (não separa CMV nem competência). Faturamento dos relatórios no mês: <b>${brl(fatMes)}</b>.</div></div>`;
   // Resumo por categoria (a pagar do mês)
   const catMap={};mrows.filter(f=>f.kind==='pagar').forEach(f=>{catMap[f.category]=(catMap[f.category]||0)+(+f.amount);});
   const catList=Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
@@ -941,6 +945,13 @@ function renderFinance(){
     recList.forEach(([c,v])=>h+=`<tr><td>${esc(c)}</td><td class="r">${brl2(v)}</td></tr>`);
     h+='</tbody></table></div><div class="hint">Soma das entradas dos extratos (cartão líquido, Pix, Brendi), já sem as transferências internas. Se algum valor parecer estranho, reclassifique na aba Banco.</div>';}
   else h+='<div class="muted">Nenhuma entrada de extrato neste mês. Importe os extratos na aba Banco.</div>';
+  // Pago pelos extratos — por categoria
+  const pagList=Object.entries(pagMap).sort((a,b)=>b[1]-a[1]);
+  h+=`<div class="sec-title">Pago pelos extratos — ${fmtMonth(mo)} · total ${brl(pagoExtrato)}</div>`;
+  if(pagList.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Categoria de gasto</th><th class="r">Pago</th></tr></thead><tbody>';
+    pagList.forEach(([c,v])=>h+=`<tr><td>${esc(c)}</td><td class="r">${brl2(v)}</td></tr>`);
+    h+='</tbody></table></div><div class="hint">Saídas reais da conta (sem transferências internas). Classifique os lançamentos na aba <b>Banco</b> para esta quebra ficar precisa — o que estiver em "Não classificado" cai em Outros.</div>';}
+  else h+='<div class="muted">Nenhuma saída de extrato neste mês.</div>';
   // Lançamentos
   const list=[...mrows].sort((a,b)=>((a.due_date||'zzz')<(b.due_date||'zzz')?-1:1));
   h+=`<div class="sec-title">Lançamentos — ${fmtMonth(mo)}</div>`;
@@ -995,14 +1006,22 @@ function parseBankCSV(txt){
   }
   return out;
 }
-function autoCat(desc){const d=norm(desc);
-  if(/brendi/.test(d))return 'Brendi/Delivery';
-  if(/sipag|cr ant|cr cmp|cr cps|recebimento rede|cielo|getnet|stone|pagseguro|mercado pago|maquin/.test(d))return 'Cartão/Maquininha';
-  if(/ch food|bernardin/.test(d))return 'Transferência interna';
-  if(/sispag|fornecedor/.test(d))return 'Fornecedores';
-  if(/pedag|tag pg ped/.test(d))return 'Pedágio';
-  if(/tarifa|iof|manutencao|cta garantida|juros/.test(d))return 'Tarifas/Juros';
-  if(/pix/.test(d))return 'Pix';
+const BANK_CATS=['Venda Cartão','Venda Pix','Venda Brendi','Fornecedor','Folha/Salário','Pró-labore','Serviços','Impostos/Taxas','Consórcio/Financiamento','Transferência interna','Outros','Não classificado'];
+const VENDA_CATS=['Venda Cartão','Venda Pix','Venda Brendi'];
+function autoCat(desc,amount){const d=norm(desc);const isOut=(+amount)<0;
+  if(/ch food|bernardin|mesma titular|-msm|pix\.emit\.out if-msm/.test(d))return 'Transferência interna';
+  if(isOut){
+    if(/salario|ferias|\bvale\b|folha|diaria|rescis/.test(d))return 'Folha/Salário';
+    if(/pro.?labore/.test(d))return 'Pró-labore';
+    if(/consorcio|financ|emprestim/.test(d))return 'Consórcio/Financiamento';
+    if(/sispag|fornecedor/.test(d))return 'Fornecedor';
+    if(/servico|limpeza|manuten|contad|telecom|iconnect|premmia/.test(d))return 'Serviços';
+    if(/tarifa|iof|juros|pacote|anuidade|mensa|pedag|\btag\b|seguro|imposto|darf|\bdas\b|taxa|conv\.dem/.test(d))return 'Impostos/Taxas';
+    return 'Não classificado';
+  }
+  if(/brendi/.test(d))return 'Venda Brendi';
+  if(/sipag|cr ant|cr cmp|cr cps|recebimento rede|cielo|getnet|stone|pagseguro|mercado pago|maquin/.test(d))return 'Venda Cartão';
+  if(/pix/.test(d))return 'Venda Pix';
   return 'Não classificado';}
 function showBankMsg(msg,ok){_finMsg(msg,ok);}
 function parseItauExtrato(txt){
@@ -1034,7 +1053,7 @@ function parseSicoobExtrato(txt){
 }
 async function saveBankTx(txs,account){
   if(!txs.length)return 0;
-  const rows=txs.map(t=>({unit_id:curUnit,account,tx_date:t.tx_date,amount:t.amount,description:t.description||'',category:autoCat(t.description),source:'extrato '+account}));
+  const rows=txs.map(t=>({unit_id:curUnit,account,tx_date:t.tx_date,amount:t.amount,description:t.description||'',category:autoCat(t.description,t.amount),source:'extrato '+account}));
   const {error}=await sb.from('bank_tx').upsert(rows,{onConflict:'unit_id,tx_date,amount,description',ignoreDuplicates:true});
   if(error)throw new Error(error.message);
   return rows.length;
@@ -1101,6 +1120,8 @@ function renderRates(){
     <div id="rcOut" class="hint"></div></div>`;
   const area=document.getElementById('ratesArea');if(area){area.innerHTML=h;renderRatesCalc();}
 }
+let bankFilter='todos';
+function setBankFilter(v){bankFilter=v;renderBanco();}
 function renderBanco(){
   renderRates();
   const rows=bank.filter(b=>!b.unit_id||b.unit_id===curUnit);
@@ -1120,26 +1141,34 @@ function renderBanco(){
   const expEl=document.getElementById('bankExpected'), catEl=document.getElementById('bankCardCat'), matchEl=document.getElementById('bankMatch');
   if(expEl&&matchEl){
     const exp=parseFloat((expEl.value||'').replace(/\./g,'').replace(',','.'))||0;
-    const cardCat=(catEl.value||'Cartão/Maquininha');
+    const cardCat=(catEl.value||'Venda Cartão');
     const recebido=rows.filter(b=>b.amount>0&&b.category===cardCat).reduce((s,b)=>s+(+b.amount),0);
     if(exp>0){const dif=recebido-exp;
       matchEl.innerHTML=`Recebido no extrato (${esc(cardCat)}): <b>${brl(recebido)}</b><br>Esperado: <b>${brl(exp)}</b><br>Diferença: <span class="badge ${Math.abs(dif)<1?'b-good':'b-bad'}">${brl(dif)}</span> ${Math.abs(dif)<1?'✓ bateu':'⚠️ conferir'}`;
     } else matchEl.textContent='Informe o total esperado para comparar com o que caiu no banco.';
   }
   const area=document.getElementById('bankArea');
-  const list=[...rows].sort((a,b)=>(a.tx_date<b.tx_date?1:-1));
-  let h='<div class="sec-title">Lançamentos do extrato</div>';
-  if(list.length){h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Data</th><th>Conta</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th>Conciliado</th><th></th></tr></thead><tbody>';
-    list.forEach(b=>{h+=`<tr>
+  const naoClass=rows.filter(b=>!b.category||b.category==='Não classificado').length;
+  // filtro
+  const F={todos:()=>true,naoclass:b=>!b.category||b.category==='Não classificado',entradas:b=>b.amount>0,saidas:b=>b.amount<0,pix:b=>/pix/i.test(b.description||'')};
+  const fn=F[bankFilter]||F.todos;
+  const list=[...rows].filter(fn).sort((a,b)=>(a.tx_date<b.tx_date?1:-1));
+  const btn=(v,lb)=>`<button class="sm ${bankFilter===v?'primary':''}" onclick="setBankFilter('${v}')">${lb}</button>`;
+  let h='<div class="sec-title">Categorizar lançamentos do extrato</div>';
+  if(naoClass>0)h+=`<div class="hint gold">⚠️ <b>${naoClass}</b> lançamento(s) ainda em "Não classificado". Use o filtro abaixo e classifique cada um — assim o Recebido e o Pago ficam corretos.</div>`;
+  h+=`<div class="unitpick" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">${btn('todos','Todos ('+rows.length+')')}${btn('naoclass','Não classificados ('+naoClass+')')}${btn('entradas','Entradas')}${btn('saidas','Saídas')}${btn('pix','Só Pix')}</div>`;
+  if(list.length){h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Data</th><th>Conta</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th>Conc.</th><th></th></tr></thead><tbody>';
+    list.forEach(b=>{const cur=b.category||'Não classificado';const opts=(BANK_CATS.includes(cur)?BANK_CATS:[cur,...BANK_CATS]);
+      h+=`<tr>
       <td>${new Date(b.tx_date+'T00:00').toLocaleDateString('pt-BR')}</td>
       <td class="muted">${esc(b.account||'—')}</td>
-      <td>${esc(b.description)}</td>
-      <td><input value="${esc(b.category)}" list="bankCats" style="width:150px;padding:5px" onchange="setBankCat('${b.id}',this.value)"></td>
+      <td style="max-width:260px">${esc(b.description)}</td>
+      <td><select style="width:auto;padding:5px;${cur==='Não classificado'?'border-color:var(--gold)':''}" onchange="setBankCat('${b.id}',this.value)">${opts.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('')}</select></td>
       <td class="r" style="color:${b.amount>=0?'var(--greenl)':'var(--red)'}">${brl2(b.amount)}</td>
       <td><span class="st ${b.reconciled?'st-feito':'st-afazer'}" style="cursor:pointer" onclick="toggleRec('${b.id}',${b.reconciled})">${b.reconciled?'Sim':'Não'}</span></td>
       <td><span class="del" onclick="delBank('${b.id}')">×</span></td></tr>`;});
     h+='</tbody></table></div>';}
-  else h+='<div class="muted">Nenhum lançamento importado ainda. Suba um extrato .ofx ou .csv acima.</div>';
+  else h+='<div class="muted">Nenhum lançamento neste filtro.</div>';
   area.innerHTML=h;
 }
 
@@ -1283,8 +1312,8 @@ function pullFromExtrato(){
   const ps=ref.period_start,pe=ref.period_end;
   const rows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.tx_date>=ps&&b.tx_date<=pe);
   if(!rows.length)return showFech('Não há lançamentos de extrato neste período. Importe o extrato em OFX/CSV na aba Banco primeiro.',false);
-  const pix=rows.filter(b=>b.category==='Pix').reduce((s,b)=>s+(+b.amount),0);
-  const brendi=rows.filter(b=>b.category==='Brendi/Delivery').reduce((s,b)=>s+(+b.amount),0);
+  const pix=rows.filter(b=>b.category==='Venda Pix').reduce((s,b)=>s+(+b.amount),0);
+  const brendi=rows.filter(b=>b.category==='Venda Brendi').reduce((s,b)=>s+(+b.amount),0);
   document.getElementById('ccPix').value=pix.toFixed(2).replace('.',',');
   document.getElementById('ccBrendi').value=brendi.toFixed(2).replace('.',',');
   showFech('↧ Puxado do extrato ('+fmtBr(ps)+' a '+fmtBr(pe)+'): Pix '+brl(pix)+' · Brendi '+brl(brendi)+'. Confira e clique em salvar.');
@@ -1389,7 +1418,7 @@ function renderFechamento(){
   ['Itaú','Sicoob'].forEach(acq=>{['credito','debito'].forEach(m=>{const rs=mach.filter(x=>x.acquirer===acq&&x.method===m);if(rs.length){const g=rs.reduce((s,x)=>s+(+x.gross),0),n=rs.reduce((s,x)=>s+(+x.net),0);h+=`<tr><td>${acq}</td><td class="muted">${m}</td><td class="r">${brl2(g)}</td><td class="r">${n?brl2(n):'—'}</td></tr>`;}});});
   h+='</tbody></table></div>';
   // M2: Conciliação por banco — maquininha (líquido) × cartão que caiu no extrato
-  const bankRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Cartão/Maquininha');
+  const bankRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Venda Cartão');
   // Janela de repasse D+1 com fim de semana caindo na segunda: liquidações das vendas [sel..period_end] caem em [próximo dia útil de sel .. próximo dia útil do fim].
   const settleStart=nextBizDay(sel), settleEnd=nextBizDay(pInfo.period_end);
   const machNet=acq=>mach.filter(x=>x.acquirer===acq).reduce((s,x)=>s+(+x.net||+x.gross),0);
@@ -1399,8 +1428,8 @@ function renderFechamento(){
   // Conciliação de recebimentos — Pix e Brendi × extrato
   const maqPix=mach.filter(x=>x.method==='pix').reduce((s,x)=>s+(+x.gross),0);
   const expPix=salaoPix+maqPix;
-  const extPix=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Pix'&&b.tx_date>=sel&&b.tx_date<=settleEnd).reduce((s,b)=>s+(+b.amount),0);
-  const extBrendi=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Brendi/Delivery'&&b.tx_date>=settleStart&&b.tx_date<=settleEnd).reduce((s,b)=>s+(+b.amount),0);
+  const extPix=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Venda Pix'&&b.tx_date>=sel&&b.tx_date<=settleEnd).reduce((s,b)=>s+(+b.amount),0);
+  const extBrendi=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Venda Brendi'&&b.tx_date>=settleStart&&b.tx_date<=settleEnd).reduce((s,b)=>s+(+b.amount),0);
   const rrow=(lbl,exp,ext,tol,note)=>{const d=ext-exp;return `<tr><td>${lbl}</td><td class="r">${brl(exp)}</td><td class="r">${ext?brl(ext):'—'}</td><td class="r">${ext?('<span class="badge '+(Math.abs(d)<tol?'b-good':'b-warn')+'">'+brl(d)+'</span>'):'<span class="muted">suba o extrato</span>'}</td></tr>${note?`<tr><td colspan="4" class="muted" style="font-size:11px;padding-top:0">${note}</td></tr>`:''}`;};
   h+='<div class="sec-title">Conciliação de recebimentos — esperado × caiu no extrato</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Recebimento</th><th class="r">Esperado (relatório)</th><th class="r">Caiu no extrato</th><th class="r">Diferença</th></tr></thead><tbody>';
   h+=rrow('Pix (salão'+(maqPix?' + maquininha':'')+')',expPix,extPix,200,'⚠️ Pix é difícil de conferir por data: o Pix de sábado/domingo cai na <b>segunda</b> no Sicoob, misturado com as vendas da própria segunda (período seguinte). Por isso a segunda infla este número. Use o Pix do Yooga como referência — e lembre: Pix vai direto pra conta, é baixo risco de desvio.');
