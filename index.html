@@ -235,8 +235,15 @@ tr:last-child td{border-bottom:none}
     <div class="tabs" style="margin:8px 0 4px"><button class="finsub" data-f="contas" onclick="showFin('contas')">Contas</button><button class="finsub" data-f="banco" onclick="showFin('banco')">Banco</button><button class="finsub" data-f="taxas" onclick="showFin('taxas')">Taxas de cartão</button><button class="finsub" data-f="fechamento" onclick="showFin('fechamento')">Fechamento</button></div>
     <div class="sub">Fechamento Diário — cruza vendas do PDV (salão + delivery) com o capturado nas maquininhas. Aponta se algo não bate.</div>
     <div class="card">
-      <div class="sec-title" style="margin-top:0">1 · Suba os arquivos do período (detecção automática)</div>
-      <div id="fechDrop" class="drop"><b>Arraste qualquer arquivo aqui</b> ou clique — o sistema identifica sozinho: Yooga (.xls), Brendi (.pdf), maquininha Rede (.xlsx), extratos (.pdf/.ofx)<input type="file" id="fechFile" accept=".xls,.xlsx,.csv,.pdf,.htm,.html,.ofx,.txt" style="display:none"></div>
+      <div class="sec-title" style="margin-top:0">1 · Suba os arquivos do período</div>
+      <div class="unitpick" style="margin-bottom:8px"><span class="muted">O que é este arquivo?</span>
+        <select id="fechType" style="width:auto">
+          <option value="yooga">Vendas Salão — Yooga (.xls)</option>
+          <option value="brendi">Vendas Delivery — Brendi (.pdf)</option>
+          <option value="rede">Maquininha Rede/Itaú (.xlsx)</option>
+          <option value="extrato">Extrato bancário (Itaú/Sicoob PDF · OFX · CSV)</option>
+        </select></div>
+      <div id="fechDrop" class="drop"><b>Arraste aqui</b> ou clique — do tipo selecionado acima<input type="file" id="fechFile" accept=".xls,.xlsx,.csv,.pdf,.htm,.html,.ofx,.txt" style="display:none"></div>
       <div id="fechMsg" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;font-size:13px"></div>
       <div class="sec-title">2 · Maquininha Sicoob (lançamento manual — não exporta arquivo)</div>
       <div class="grid g4">
@@ -337,7 +344,8 @@ const FICHAS=[
 /* ===================== ESTADO ===================== */
 let session=null, profile=null, units=[], curUnit=null;
 let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[], reports=[], bank=[], cardRates=[], fechPdv=[], fechMach=[], fechClose=[];
-let clockTimer=null, realtimeCh=null, histChart=null, repChart=null;
+let clockTimer=null, realtimeCh=null, histChart=null, fechSelPeriod=null;
+function setFechPeriod(v){fechSelPeriod=v;renderFechamento();}
 const brl=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
 const brl2=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
 const esc=s=>(s||'').toString().replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -492,8 +500,10 @@ function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas()
 
 /* ===================== OVERVIEW ===================== */
 function fechCardGap(){
-  const pdv=fechPdv.filter(x=>x.unit_id===curUnit), mach=fechMach.filter(x=>x.unit_id===curUnit);
+  let pdv=fechPdv.filter(x=>x.unit_id===curUnit), mach=fechMach.filter(x=>x.unit_id===curUnit);
   if(!pdv.length||!mach.length)return null;
+  const lastP=[...pdv,...mach].map(x=>x.period_start).sort().pop();
+  pdv=pdv.filter(x=>x.period_start===lastP); mach=mach.filter(x=>x.period_start===lastP);
   const pc=pdv.filter(x=>(x.method==='debito'||x.method==='credito')).reduce((s,x)=>s+(+x.gross),0); // salão + delivery cartão
   const mc=mach.filter(x=>x.method==='credito'||x.method==='debito').reduce((s,x)=>s+(+x.gross),0);
   return mc-pc;
@@ -509,8 +519,15 @@ function renderOverview(){
   let concKpi;
   if(gap===null)concKpi=kpi('Conciliação de cartão','—','suba o fechamento');
   else{const ok=Math.abs(gap)<FECH_LIMITE;concKpi=`<div class="card kpi" style="${ok?'':'border-color:var(--red);background:#F9ECE9'}"><div class="lbl">Conciliação de cartão</div><div class="val" style="${ok?'':'color:var(--red)'}">${brl(gap)}</div><div class="note">${ok?'✓ confere (último período)':'⚠️ diferença acima do limite'}</div></div>`;}
+  // Faturamento real do último período fechado (salão + delivery), em vez de valor fixo
+  const fp=fechPdv.filter(x=>x.unit_id===curUnit);
+  let fatKpi;
+  if(fp.length){const per=[...fp].sort((a,b)=>b.period_start<a.period_start?-1:1)[0];
+    const tot=fp.filter(x=>x.period_start===per.period_start&&x.period_end===per.period_end).reduce((s,x)=>s+(+x.gross),0);
+    fatKpi=kpi('Vendas (último período)',brl(tot),fmtBr(per.period_start)+' a '+fmtBr(per.period_end));}
+  else fatKpi=kpi('Vendas (último período)','—','suba os relatórios no Fechamento');
   el.innerHTML=`
-    ${kpi('Faturamento / mês','R$ 259k','salão + delivery (ref.)')}
+    ${fatKpi}
     ${kpi('Tarefas a fazer',afazer,'plano de ação')}
     ${kpi('Diaristas a pagar (semana)',brl(diaTot),'fecha segunda-feira')}
     ${concKpi}`;
@@ -553,9 +570,9 @@ function renderTasks(){
 /* ===================== METAS ===================== */
 async function addMeta(){
   const v=document.getElementById('nmeta').value.trim();if(!v)return;
-  const val=document.getElementById('nmetav').value.trim()||'—';
+  const mv=document.getElementById('nmetav').value.trim()||'—';
   const sort=(goals.reduce((m,g)=>Math.max(m,g.sort||0),0))+1;
-  await sb.from('goals').insert({title:v,value:val,sort,unit_id:curUnit});
+  await sb.from('goals').insert({title:v,value:mv,sort,unit_id:curUnit});
   document.getElementById('nmeta').value='';document.getElementById('nmetav').value='';await loadAll();renderMetas();
 }
 async function delMeta(id){if(!confirm('Excluir meta?'))return;await sb.from('goals').delete().eq('id',id);await loadAll();renderMetas();}
@@ -705,7 +722,7 @@ async function delShift(id){if(!confirm('Excluir turno?'))return;await sb.from('
 function renderEscala(){
   const area=document.getElementById('escalaArea');
   if(!emps.length){area.innerHTML=shiftBlock()+'<div class="muted">Nenhum funcionário cadastrado. Cadastre na aba Equipe.</div>';return;}
-  const today=new Date();const start=new Date(today);start.setDate(today.getDate()-today.getDay()+1); // segunda
+  const today=new Date();const start=new Date(today);const _off=(today.getDay()+6)%7;start.setDate(today.getDate()-_off); // segunda
   const days=[...Array(7)].map((_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);return d;});
   const shById={};shifts.forEach(s=>shById[s.id]=s);
   const cycle=['','folga',...shifts.map(s=>s.id)];
@@ -734,11 +751,11 @@ async function cycleCell(emp,ds){
 }
 
 /* ===================== PONTO & DIARISTAS ===================== */
-function weekBounds(){const t=new Date();const s=new Date(t);s.setDate(t.getDate()-t.getDay()+1);s.setHours(0,0,0,0);
+function weekBounds(){const t=new Date();const s=new Date(t);const off=(t.getDay()+6)%7;s.setDate(t.getDate()-off);s.setHours(0,0,0,0);
   const e=new Date(s);e.setDate(s.getDate()+6);e.setHours(23,59,59,999);return[s,e];}
 function weekDiaristaTotal(){
   const[s,e]=weekBounds();const dias={};let total=0;
-  const diaristas=emps.filter(x=>x.role==='diarista');
+  const diaristas=emps.filter(x=>x.role==='diarista'&&(!x.unit_id||x.unit_id===curUnit));
   diaristas.forEach(d=>{
     const daysWorked=new Set();
     punches.filter(p=>p.employee_id===d.user_id).forEach(p=>{const dt=new Date(p.ts);if(dt>=s&&dt<=e)daysWorked.add(dt.toISOString().slice(0,10));});
@@ -783,8 +800,9 @@ function renderEquipe(){
     <button class="primary full" style="margin-top:12px" onclick="createEmp()">Cadastrar funcionário</button>
     <div class="hint">O funcionário entra na tela <b>👤 Equipe</b> usando o <b>login</b> e o <b>PIN</b> definidos aqui.</div></div>`;
   h+='<div class="sec-title">Equipe cadastrada</div>';
-  if(emps.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Papel</th><th class="r">Diária</th><th>Ações</th></tr></thead><tbody>';
-    emps.forEach(e=>{h+=`<tr>
+  const list=emps.filter(e=>!e.unit_id||e.unit_id===curUnit);
+  if(list.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Papel</th><th class="r">Diária</th><th>Ações</th></tr></thead><tbody>';
+    list.forEach(e=>{h+=`<tr>
       <td>${esc(e.name||'—')}</td><td class="muted">${esc(e.login||'—')}</td><td>${esc(e.cargo||'—')}</td>
       <td><select onchange="setRole('${e.user_id}',this.value)" style="width:auto;padding:5px">
         ${['funcionario','diarista'].map(r=>`<option value="${r}" ${e.role===r?'selected':''}>${r}</option>`).join('')}</select></td>
@@ -974,8 +992,7 @@ function autoCat(desc){const d=norm(desc);
   if(/tarifa|iof|manutencao|cta garantida|juros/.test(d))return 'Tarifas/Juros';
   if(/pix/.test(d))return 'Pix';
   return 'Não classificado';}
-function showBankMsg(msg,ok){const m=document.getElementById('bankMsg');if(!m)return showFech(msg,ok);
-  m.style.display='block';m.innerHTML=msg;m.style.background=ok===false?'#F5D2CB':'#D8E8DA';m.style.color=ok===false?'var(--red)':'var(--greenl)';}
+function showBankMsg(msg,ok){_finMsg(msg,ok);}
 function parseItauExtrato(txt){
   const chunks=txt.split(/(?=\d{2}\/\d{2}\/\d{4}\s)/);const out=[];
   chunks.forEach(c=>{const dm=c.match(/^(\d{2})\/(\d{2})\/(\d{4})/);if(!dm)return;
@@ -1005,6 +1022,7 @@ async function saveBankTx(txs,account){
 }
 // Detector universal: fareja o arquivo e roteia para o leitor certo
 async function detectAndRoute(file){
+  showFech('⏳ Lendo o arquivo "'+file.name+'"...',true);
   const nm=file.name.toLowerCase();let text='';
   try{
     if(nm.endsWith('.pdf'))text=await pdfText(file);
@@ -1014,12 +1032,13 @@ async function detectAndRoute(file){
   const t=text.toLowerCase();
   try{
     if(/data da venda/.test(t)&&/(confer[êe]ncia|modalidade)/.test(t)){await parseRede(file);await loadAll();renderFechamento();return;}
-    if(/relat[óo]rio operacional/.test(t)&&/(brendi|tipos de pagamento)/.test(t)){await parseBrendi(file);await loadAll();renderFechamento();return;}
-    if(/venda por forma de pagamento/.test(t)){await parseYooga(file);await loadAll();renderFechamento();return;}
+    if(/relat[óo]rio operacional/.test(t)&&/(brendi|tipos de pagamento)/.test(t)){await parseBrendi(file,text);await loadAll();renderFechamento();return;}
+    if(/venda por forma de pagamento/.test(t)){await parseYooga(file,text);await loadAll();renderFechamento();return;}
     if(/sicoob|sisbr/.test(t)){const n=await saveBankTx(parseSicoobExtrato(text),'Sicoob');await loadAll();renderBanco();renderFechamento();return showBankMsg('✓ Extrato Sicoob: '+n+' lançamentos importados (duplicados ignorados).');}
     if(/recebimento rede/.test(t)||(/ita[uú]/.test(t)&&/lan[çc]amentos do per/.test(t))){const n=await saveBankTx(parseItauExtrato(text),'Itaú');await loadAll();renderBanco();renderFechamento();return showBankMsg('✓ Extrato Itaú: '+n+' lançamentos importados (duplicados ignorados).');}
     if(/<ofx/.test(t)){const txs=parseOFX(text);const n=await saveBankTx(txs,'Banco');await loadAll();renderBanco();return showBankMsg('✓ Extrato OFX: '+n+' lançamentos.');}
-    return showBankMsg('Não reconheci este arquivo. Aceito: extrato Sicoob/Itaú (PDF ou OFX), maquininha Rede (xlsx), Brendi (PDF) e Yooga (xls).',false);
+    if(nm.endsWith('.csv')){const txs=parseBankCSV(text);if(!txs.length)return showBankMsg('CSV lido, mas não reconheci as colunas (data/valor). Tente exportar em OFX.',false);const n=await saveBankTx(txs,'Banco');await loadAll();renderBanco();return showBankMsg('✓ Extrato CSV: '+n+' lançamentos.');}
+    return showBankMsg('Não reconheci este arquivo. Aceito: extrato Sicoob/Itaú (PDF ou OFX), CSV bancário, maquininha Rede (xlsx), Brendi (PDF) e Yooga (xls).',false);
   }catch(e){return showBankMsg('Erro ao processar: '+e.message,false);}
 }
 async function handleBankFile(file){return detectAndRoute(file);}
@@ -1106,17 +1125,36 @@ function renderBanco(){
 }
 
 /* ===================== FECHAMENTO ===================== */
-function showFech(msg,ok){const m=document.getElementById('fechMsg');if(!m){return;}
-  m.style.display='block';m.innerHTML=msg;
-  m.style.background=ok===false?'#F5D2CB':'#D8E8DA';m.style.color=ok===false?'var(--red)':'var(--greenl)';}
+function _finMsg(msg,ok){['fechMsg','bankMsg'].forEach(id=>{const m=document.getElementById(id);if(m){m.style.display='block';m.innerHTML=msg;m.style.background=ok===false?'#F5D2CB':'#D8E8DA';m.style.color=ok===false?'var(--red)':'var(--greenl)';}});}
+function showFech(msg,ok){_finMsg(msg,ok);}
 function brnum(s){s=(s||'').toString().trim().replace(/r\$/i,'').trim();
   if(/,/.test(s))return parseFloat(s.replace(/\./g,'').replace(',','.'))||0;
   return parseFloat(s.replace(/[^0-9.\-]/g,''))||0;}
 function periodFromText(t){const m=(t||'').match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})[\s\S]{0,40}?(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
   if(m)return{s:`${m[3]}-${m[2]}-${m[1]}`,e:`${m[6]}-${m[5]}-${m[4]}`};return null;}
-async function handleFechFile(file){return detectAndRoute(file);}
-async function parseYooga(file){
-  const txt=await file.text();
+async function handleFechFile(file){
+  const type=(document.getElementById('fechType')||{}).value||'yooga';
+  showFech('⏳ Lendo "'+file.name+'"...',true);
+  try{
+    if(type==='yooga')await parseYooga(file);
+    else if(type==='brendi')await parseBrendi(file);
+    else if(type==='rede')await parseRede(file);
+    else if(type==='extrato'){
+      const nm=file.name.toLowerCase();
+      const text=nm.endsWith('.pdf')?await pdfText(file):await file.text();
+      const t=text.toLowerCase();let n=0,acc='Banco';
+      if(/sicoob|sisbr/.test(t)){acc='Sicoob';n=await saveBankTx(parseSicoobExtrato(text),'Sicoob');}
+      else if(/recebimento rede/.test(t)||/ita[uú]/.test(t)){acc='Itaú';n=await saveBankTx(parseItauExtrato(text),'Itaú');}
+      else if(/<ofx/.test(t)){n=await saveBankTx(parseOFX(text),'Banco');}
+      else if(nm.endsWith('.csv')){n=await saveBankTx(parseBankCSV(text),'Banco');}
+      else return showFech('Não reconheci o extrato. Use o PDF do Itaú/Sicoob, ou OFX/CSV.',false);
+      showFech('✓ Extrato ('+acc+'): '+n+' lançamentos importados (duplicados ignorados).');
+    }
+    await loadAll();renderFechamento();renderBanco();
+  }catch(e){showFech('Erro ao ler o arquivo: '+e.message,false);}
+}
+async function parseYooga(file,preText){
+  const txt=(preText!=null&&preText!=='')?preText:await file.text();
   const doc=new DOMParser().parseFromString(txt,'text/html');
   const per=periodFromText(doc.body.textContent)||{s:null,e:null};
   if(!per.s)return showFech('Não encontrei o período no arquivo do Yooga.',false);
@@ -1145,18 +1183,18 @@ async function pdfText(file){
   for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const c=await pg.getTextContent();t+=c.items.map(x=>x.str).join(' ')+'\n';}
   return t;
 }
-async function parseBrendi(file){
+async function parseBrendi(file,preText){
   const isPdf=file.name.toLowerCase().endsWith('.pdf');
-  const txt=isPdf?await pdfText(file):await file.text();
+  const txt=(preText!=null&&preText!=='')?preText:(isPdf?await pdfText(file):await file.text());
   const per=periodFromText(txt)||{s:null,e:null};
   if(!per.s)return showFech('Não encontrei o período no relatório da Brendi.',false);
   const g=re=>{const m=txt.match(re);return m?brnum(m[1]):0;};
-  const pixOn=g(/PIX\s*Online[\s\S]{0,12}?R?\$?\s*([\d.,]+)/i);
-  const credOn=g(/Cr[eé]dito\s*Online[\s\S]{0,12}?R?\$?\s*([\d.,]+)/i);
-  const cred=g(/Cr[eé]dito\s+\d+\s+R?\$?\s*([\d.,]+)/i);
-  const deb=g(/D[eé]bito\s+\d+\s+R?\$?\s*([\d.,]+)/i);
-  const din=g(/Dinheiro\s+\d+\s+R?\$?\s*([\d.,]+)/i);
-  const bruto=g(/Faturamento\s*bruto\s*R?\$?\s*([\d.,]+)/i)||g(/Vendas Totais \(R\$\);([\d.,]+)/i);
+  const pixOn=g(/PIX\s*Online\s+\d+\s+R?\$?\s*([\d.]+,\d{2})/i);
+  const credOn=g(/Cr[eé]dito\s*Online\s+\d+\s+R?\$?\s*([\d.]+,\d{2})/i);
+  const cred=g(/Cr[eé]dito\s+\d+\s+R?\$?\s*([\d.]+,\d{2})/i);
+  const deb=g(/D[eé]bito\s+\d+\s+R?\$?\s*([\d.]+,\d{2})/i);
+  const din=g(/Dinheiro\s+\d+\s+R?\$?\s*([\d.]+,\d{2})/i);
+  const bruto=g(/Vendas Totais \(R\$\);([\d.,]+)/i);
   const rows=[];
   const online=pixOn+credOn;
   if(online)rows.push({method:'online',gross:online});
@@ -1270,8 +1308,14 @@ function fechImportsBlock(){
 }
 function renderFechamento(){
   const area=document.getElementById('fechArea');if(!area)return;
-  const pdv=fechPdv.filter(x=>x.unit_id===curUnit), mach=fechMach.filter(x=>x.unit_id===curUnit);
-  if(!pdv.length&&!mach.length){area.innerHTML='<div class="muted" style="margin-top:14px">Suba os arquivos acima para ver o fechamento.</div>';return;}
+  let pdvAll=fechPdv.filter(x=>x.unit_id===curUnit), machAll=fechMach.filter(x=>x.unit_id===curUnit);
+  if(!pdvAll.length&&!machAll.length){area.innerHTML='<div class="muted" style="margin-top:14px">Suba os arquivos acima para ver o fechamento.</div>';return;}
+  // Períodos disponíveis (mais recente primeiro) + seletor
+  const periods=[...new Set([...pdvAll,...machAll].map(x=>x.period_start))].sort().reverse();
+  const sel=(fechSelPeriod&&periods.includes(fechSelPeriod))?fechSelPeriod:periods[0];
+  const pInfo=([...pdvAll,...machAll].find(x=>x.period_start===sel))||{};
+  const periodSelector=`<div class="unitpick"><span class="muted">Período:</span><select style="width:auto" onchange="setFechPeriod(this.value)">${periods.map(p=>{const inf=[...pdvAll,...machAll].find(x=>x.period_start===p)||{};return `<option value="${p}" ${p===sel?'selected':''}>${fmtBr(p)} a ${fmtBr(inf.period_end)}</option>`;}).join('')}</select><button class="sm" onclick="exportFechPDF()">🖨 Exportar PDF</button></div>`;
+  let pdv=pdvAll.filter(x=>x.period_start===sel), mach=machAll.filter(x=>x.period_start===sel);
   const sumPdv=(src,met)=>pdv.filter(x=>x.source===src&&(!met||x.method===met)).reduce((s,x)=>s+(+x.gross),0);
   const salaoDeb=sumPdv('salao','debito'), salaoCred=sumPdv('salao','credito'), salaoPix=sumPdv('salao','pix'), salaoDin=sumPdv('salao','dinheiro');
   const salaoCartao=salaoDeb+salaoCred;
@@ -1284,11 +1328,10 @@ function renderFechamento(){
   const machCartao=machCred+machDeb;
   const expectedCard=salaoCartao+delivCartao;
   const gap=machCartao-expectedCard;
-  const per=(pdv[0]||mach[0]);
-  let h=`<div class="sec-title">Resumo do período ${per?fmtBr(per.period_start)+' a '+fmtBr(per.period_end):''}</div>`;
+  let h=periodSelector+`<div class="sec-title">Resumo do período ${fmtBr(sel)+' a '+fmtBr(pInfo.period_end)}</div>`;
   h+=`<div class="grid g4">${kpi('Vendas salão',brl(salaoTotal))}${kpi('Vendas delivery',brl(delivery))}${kpi('Total geral',brl(salaoTotal+delivery))}${kpi('Dinheiro (espécie)',brl(salaoDin),'só no salão')}</div>`;
   // ===== CONCILIAÇÃO TOTAL (a que fecha de verdade) =====
-  const close=fechClose.filter(x=>x.unit_id===curUnit).sort((a,b)=>b.period_start<a.period_start?-1:1)[0];
+  const close=fechClose.filter(x=>x.unit_id===curUnit&&x.period_start===sel)[0];
   const cash=close?(+close.cash_counted):0, pixRec=close?(+close.pix_received):0, brendiRec=close?(+close.brendi_received):0;
   const totVendas=salaoTotal+delivery;
   const totRecebido=machCartao+pixRec+brendiRec+cash;
@@ -1323,12 +1366,54 @@ function renderFechamento(){
   h+='<div class="sec-title">Capturado por maquininha</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Adquirente</th><th>Modalidade</th><th class="r">Bruto</th><th class="r">Líquido</th></tr></thead><tbody>';
   ['Itaú','Sicoob'].forEach(acq=>{['credito','debito'].forEach(m=>{const rs=mach.filter(x=>x.acquirer===acq&&x.method===m);if(rs.length){const g=rs.reduce((s,x)=>s+(+x.gross),0),n=rs.reduce((s,x)=>s+(+x.net),0);h+=`<tr><td>${acq}</td><td class="muted">${m}</td><td class="r">${brl2(g)}</td><td class="r">${n?brl2(n):'—'}</td></tr>`;}});});
   h+='</tbody></table></div>';
+  // M2: Conciliação por banco — maquininha (líquido) × cartão que caiu no extrato
+  const bankRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Cartão/Maquininha');
+  const winEnd=addDaysISO(pInfo.period_end,7);
+  const machNet=acq=>mach.filter(x=>x.acquirer===acq).reduce((s,x)=>s+(+x.net||+x.gross),0);
+  const bankCard=acc=>bankRows.filter(b=>b.account===acc&&b.tx_date>=sel&&b.tx_date<=winEnd).reduce((s,b)=>s+(+b.amount),0);
+  let mrows2='';[['Itaú','Itaú (Rede)'],['Sicoob','Sicoob (SIPAG)']].forEach(([acc,lbl])=>{const mn=machNet(acc),bc=bankCard(acc);if(mn||bc){const d=bc-mn;mrows2+=`<tr><td>${lbl}</td><td class="r">${brl(mn)}</td><td class="r">${bc?brl(bc):'—'}</td><td class="r">${bc?('<span class="badge '+(Math.abs(d)<50?'b-good':'b-warn')+'">'+brl(d)+'</span>'):'<span class="muted">suba o extrato</span>'}</td></tr>`;}});
+  if(mrows2){h+='<div class="sec-title">Conciliação por banco — maquininha (líq.) × caiu no extrato</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Banco</th><th class="r">Maquininha (líq.)</th><th class="r">Caiu no extrato</th><th class="r">Diferença</th></tr></thead><tbody>'+mrows2+'</tbody></table></div><div class="hint">Rede cai no Itaú, SIPAG no Sicoob. Crédito é D+1, então a janela do extrato considera o período + 7 dias. Obs.: o líquido do Sicoob é aproximado enquanto for lançado manual (sem a taxa aplicada).</div>';}
   // Pix e delivery
   h+=`<div class="hint gold" style="margin-top:12px">Pix no salão: <b>${brl(salaoPix)}</b> · Delivery (Brendi): <b>${brl(delivery)}</b>. Estes conferem contra os recebimentos Pix/Brendi no extrato (aba Banco).</div>`;
+  // M3: Histórico de fechamentos (todos os períodos)
+  if(periods.length>1){
+    h+='<div class="sec-title">Histórico de fechamentos</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Período</th><th class="r">Vendido</th><th class="r">Entrou</th><th class="r">Diferença</th></tr></thead><tbody>';
+    periods.forEach(p=>{const pv=pdvAll.filter(x=>x.period_start===p), mc=machAll.filter(x=>x.period_start===p);
+      const cl=fechClose.find(x=>x.unit_id===curUnit&&x.period_start===p)||{};
+      const vend=pv.reduce((s,x)=>s+(+x.gross),0);
+      const card=mc.filter(x=>x.method==='credito'||x.method==='debito').reduce((s,x)=>s+(+x.gross),0);
+      const ent=card+(+cl.cash_counted||0)+(+cl.pix_received||0)+(+cl.brendi_received||0);
+      const d=vend-ent, inf=pv[0]||mc[0]||{};
+      h+=`<tr><td>${fmtBr(p)} a ${fmtBr(inf.period_end)}</td><td class="r">${brl(vend)}</td><td class="r">${ent?brl(ent):'—'}</td><td class="r">${ent?('<span class="badge '+(Math.abs(d)<100?'b-good':'b-warn')+'">'+brl(d)+'</span>'):'—'}</td></tr>`;});
+    h+='</tbody></table></div>';
+  }
   h+=fechImportsBlock();
   area.innerHTML=h;
+  const unitName=(units.find(u=>u.id===curUnit)||{}).name||'';
+  window._fechSummary={unitName,period:fmtBr(sel)+' a '+fmtBr(pInfo.period_end),salaoTotal,salaoCartao,salaoPix,salaoDin,delivery,delivOnline,delivCartao,delivDin,machCartao,machCred,machDeb,cash,pixRec,brendiRec,totVendas,totRecebido,diffT};
+}
+function exportFechPDF(){
+  const s=window._fechSummary;if(!s)return;
+  const w=window.open('','_blank','width=800,height=900');if(!w)return alert('Permita pop-ups para exportar o PDF.');
+  const row=(l,v,b)=>`<tr><td>${l}</td><td style="text-align:right${b?';font-weight:700':''}">${brl(v)}</td></tr>`;
+  w.document.write(`<title>Fechamento ${s.unitName} ${s.period}</title>
+  <style>body{font-family:Arial,sans-serif;padding:30px;color:#222;max-width:640px;margin:auto}h1{color:#1B4332;font-size:20px;margin:0}h2{color:#9C7A3C;font-size:13px;text-transform:uppercase;margin:22px 0 6px;border-bottom:1px solid #ddd;padding-bottom:4px}table{width:100%;border-collapse:collapse;font-size:14px}td{padding:5px 0;border-bottom:1px solid #eee}.big{font-size:22px;font-weight:700}.tot{background:#f4f0e7}</style>
+  <h1>CH.OSEN — Fechamento</h1><div style="color:#777">${s.unitName} · período ${s.period}</div>
+  <h2>Vendas</h2><table>
+  ${row('Salão — cartão',s.salaoCartao)}${row('Salão — Pix',s.salaoPix)}${row('Salão — dinheiro',s.salaoDin)}
+  ${row('Delivery — online (Pix+créd)',s.delivOnline)}${row('Delivery — cartão maquininha',s.delivCartao)}${row('Delivery — dinheiro',s.delivDin)}
+  <tr class="tot">${'<td>Total vendido</td><td style="text-align:right;font-weight:700">'+brl(s.totVendas)+'</td>'}</tr></table>
+  <h2>Entrou</h2><table>
+  ${row('Cartão nas maquininhas',s.machCartao)}${row('Pix recebido (extrato)',s.pixRec)}${row('Brendi recebido (extrato)',s.brendiRec)}${row('Dinheiro contado',s.cash)}
+  <tr class="tot"><td>Total que entrou</td><td style="text-align:right;font-weight:700">${brl(s.totRecebido)}</td></tr></table>
+  <h2>Resultado da conciliação</h2>
+  <div class="big" style="color:${Math.abs(s.diffT)<100?'#2D6A4F':'#C0392B'}">Diferença: ${brl(s.diffT)}</div>
+  <p style="color:#777;font-size:12px">${Math.abs(s.diffT)<100?'Fecha — tudo que foi vendido entrou.':'Diferença a investigar.'}</p>
+  <p style="color:#999;font-size:11px;margin-top:30px">Gerado pelo CH.OSEN em ${new Date().toLocaleString('pt-BR')}</p>`);
+  w.document.close();w.focus();setTimeout(()=>w.print(),400);
 }
 function fmtBr(d){if(!d)return '';const[y,m,dd]=d.split('-');return `${dd}/${m}`;}
+function addDaysISO(iso,n){if(!iso)return iso;const d=new Date(iso+'T00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
 
 /* ===================== APP FUNCIONÁRIO ===================== */
 function tickClock(){const n=new Date();document.getElementById('clockTime').textContent=
@@ -1371,13 +1456,13 @@ function wireUploads(){
   if(_wired)return;
   const drop=document.getElementById('drop'),file=document.getElementById('file');
   if(drop&&file){drop.onclick=()=>file.click();
-    file.onchange=e=>handleFiles(e.target.files);
+    file.onchange=e=>{handleFiles(e.target.files);e.target.value='';};
     ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add('over');}));
     ['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove('over');}));
     drop.addEventListener('drop',e=>handleFiles(e.dataTransfer.files));}
   const bankDrop=document.getElementById('bankDrop'),bankFile=document.getElementById('bankFile');
   if(bankDrop&&bankFile){bankDrop.onclick=()=>bankFile.click();
-    bankFile.onchange=e=>{if(e.target.files[0])handleBankFile(e.target.files[0]);};
+    bankFile.onchange=e=>{if(e.target.files[0])handleBankFile(e.target.files[0]);e.target.value='';};
     ['dragenter','dragover'].forEach(ev=>bankDrop.addEventListener(ev,e=>{e.preventDefault();bankDrop.classList.add('over');}));
     ['dragleave','drop'].forEach(ev=>bankDrop.addEventListener(ev,e=>{e.preventDefault();bankDrop.classList.remove('over');}));
     bankDrop.addEventListener('drop',e=>{if(e.dataTransfer.files[0])handleBankFile(e.dataTransfer.files[0]);});}
