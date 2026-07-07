@@ -142,6 +142,7 @@ tr:last-child td{border-bottom:none}
   <section id="overview" class="pane active">
     <h2>Visão Geral</h2><div class="sub" id="ovSub">—</div>
     <div class="grid g4" id="ovKpis" style="margin-top:14px"></div>
+    <div id="ovAlert" style="display:none;margin-top:12px;padding:12px 14px;border-radius:10px;background:#F9ECE9;border:1px solid var(--red);color:var(--red);font-size:14px"></div>
     <div class="sec-title">Focos da semana</div>
     <div class="card hint gold">Meça com os relatórios: <b>chopp a R$14</b> segurou o volume? · <b>Estrella/Cerpa</b> premium vingaram? · <b>taxa de anexação do combo</b> (meta ≥ 20%) · <b>diaristas a pagar</b> na segunda (aba Ponto).</div>
   </section>
@@ -467,17 +468,33 @@ function bindTabs(){
 function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas();renderEscala();renderPonto();renderEquipe();renderHist();renderFinance();renderBanco();renderFechamento();}
 
 /* ===================== OVERVIEW ===================== */
+function fechCardGap(){
+  const pdv=fechPdv.filter(x=>x.unit_id===curUnit), mach=fechMach.filter(x=>x.unit_id===curUnit);
+  if(!pdv.length||!mach.length)return null;
+  const pc=pdv.filter(x=>x.source==='salao'&&(x.method==='debito'||x.method==='credito')).reduce((s,x)=>s+(+x.gross),0);
+  const mc=mach.filter(x=>x.method==='credito'||x.method==='debito').reduce((s,x)=>s+(+x.gross),0);
+  return mc-pc;
+}
+const FECH_LIMITE=300; // limite de alerta da diferença de cartão
 function renderOverview(){
   const u=units.find(x=>x.id===curUnit);
   document.getElementById('ovSub').textContent=(u?u.name:'—')+' · resumo do CH.OSEN';
   const afazer=tasks.filter(t=>t.status!=='feito').length;
   const diaTot=weekDiaristaTotal().total;
+  const gap=fechCardGap();
   const el=document.getElementById('ovKpis');
+  let concKpi;
+  if(gap===null)concKpi=kpi('Conciliação de cartão','—','suba o fechamento');
+  else{const ok=Math.abs(gap)<FECH_LIMITE;concKpi=`<div class="card kpi" style="${ok?'':'border-color:var(--red);background:#F9ECE9'}"><div class="lbl">Conciliação de cartão</div><div class="val" style="${ok?'':'color:var(--red)'}">${brl(gap)}</div><div class="note">${ok?'✓ confere (último período)':'⚠️ diferença acima do limite'}</div></div>`;}
   el.innerHTML=`
     ${kpi('Faturamento / mês','R$ 259k','salão + delivery (ref.)')}
-    ${kpi('Lucro líquido','~R$ 72k','~28% pós-imposto')}
     ${kpi('Tarefas a fazer',afazer,'plano de ação')}
-    ${kpi('Diaristas a pagar (semana)',brl(diaTot),'fecha segunda-feira')}`;
+    ${kpi('Diaristas a pagar (semana)',brl(diaTot),'fecha segunda-feira')}
+    ${concKpi}`;
+  const al=document.getElementById('ovAlert');
+  if(al){if(gap!==null&&Math.abs(gap)>=FECH_LIMITE){al.style.display='block';
+    al.innerHTML='⚠️ <b>Alerta de conciliação:</b> no último fechamento, as maquininhas capturaram <b>'+brl(gap)+'</b> '+(gap>0?'a mais':'a menos')+' em cartão do que o PDV registrou. Confira na aba Fechamento (pode ser venda lançada em Pix/dinheiro por engano, ou venda fora do PDV).';}
+    else al.style.display='none';}
 }
 function kpi(l,v,n){return `<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="note">${n||''}</div></div>`;}
 
@@ -1151,7 +1168,7 @@ function renderFechamento(){
       <div style="font-size:20px;color:var(--mut)">=</div>
       <div><div class="lbl muted" style="font-size:12px">Diferença</div><div><span class="badge ${cls}" style="font-size:15px">${brl(gap)}</span></div></div>
     </div>
-    <div class="hint">${Math.abs(gap)<50?'✓ Bate. As vendas de cartão do PDV conferem com o capturado nas maquininhas.':(gap>0?'⚠️ As maquininhas capturaram <b>mais</b> que o PDV registrou. Pode haver venda passada na maquininha sem lançar no PDV (produto saindo sem registro).':'⚠️ O PDV registrou <b>mais</b> cartão do que caiu nas maquininhas. Verifique vendas canceladas ou não capturadas.')} ${mach.some(x=>x.acquirer==='Sicoob')?'':'<b>Falta lançar a captura do Sicoob</b> para o cartão fechar.'}</div>
+    <div class="hint">${Math.abs(gap)<50?'✓ Bate. As vendas de cartão do PDV conferem com o capturado nas maquininhas.':(gap>0?'⚠️ As maquininhas capturaram <b>'+brl(gap)+' a mais</b> em cartão do que o PDV registrou como cartão. <b>Duas causas possíveis:</b> (a) vendas de cartão lançadas no PDV como <b>Pix ou dinheiro</b> — nesse caso o dinheiro está no total, só na forma errada, e <b>nada foi perdido</b>; ou (b) venda passada na maquininha sem lançar no PDV (produto sem registro). Para saber qual é: veja se o Pix ('+brl(salaoPix)+') ou o dinheiro ('+brl(salaoDin)+') do PDV está inflado comparando com o Pix que caiu no extrato e o dinheiro contado no caixa.':'⚠️ O PDV registrou <b>'+brl(-gap)+' a mais</b> em cartão do que caiu nas maquininhas. Verifique vendas canceladas ou não capturadas.')} ${mach.some(x=>x.acquirer==='Sicoob')?'':'<b>Falta lançar a captura do Sicoob</b> para o cartão fechar.'}</div>
   </div>`;
   // Detalhe maquininhas
   h+='<div class="sec-title">Capturado por maquininha</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Adquirente</th><th>Modalidade</th><th class="r">Bruto</th><th class="r">Líquido</th></tr></thead><tbody>';
