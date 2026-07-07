@@ -232,6 +232,7 @@ tr:last-child td{border-bottom:none}
           <option value="rede">Maquininha Rede/Itaú (.xlsx)</option>
         </select></div>
       <div id="fechDrop" class="drop"><b>Arraste o arquivo aqui</b> ou clique — conforme o tipo selecionado acima<input type="file" id="fechFile" accept=".xls,.xlsx,.csv,.htm,.html" style="display:none"></div>
+      <div id="fechMsg" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;font-size:13px"></div>
       <div class="sec-title">2 · Maquininha Sicoob (lançamento manual — não exporta arquivo)</div>
       <div class="grid g4">
         <div><label class="fld">Período (mesmo dos arquivos)</label><input id="scPeriod" placeholder="ex: 01/07 a 05/07"></div>
@@ -1027,6 +1028,9 @@ function renderBanco(){
 }
 
 /* ===================== FECHAMENTO ===================== */
+function showFech(msg,ok){const m=document.getElementById('fechMsg');if(!m){return;}
+  m.style.display='block';m.innerHTML=msg;
+  m.style.background=ok===false?'#F5D2CB':'#D8E8DA';m.style.color=ok===false?'var(--red)':'var(--greenl)';}
 function brnum(s){s=(s||'').toString().trim().replace(/r\$/i,'').trim();
   if(/,/.test(s))return parseFloat(s.replace(/\./g,'').replace(',','.'))||0;
   return parseFloat(s.replace(/[^0-9.\-]/g,''))||0;}
@@ -1038,14 +1042,14 @@ async function handleFechFile(file){
     if(type==='yooga')await parseYooga(file);
     else if(type==='brendi')await parseBrendi(file);
     else if(type==='rede')await parseRede(file);
-  }catch(e){console.error(e);return alert('Erro ao ler o arquivo: '+e.message);}
+  }catch(e){console.error(e);return showFech('Erro ao ler o arquivo: '+e.message,false);}
   await loadAll();renderFechamento();
 }
 async function parseYooga(file){
   const txt=await file.text();
   const doc=new DOMParser().parseFromString(txt,'text/html');
   const per=periodFromText(doc.body.textContent)||{s:null,e:null};
-  if(!per.s)return alert('Não encontrei o período no arquivo do Yooga.');
+  if(!per.s)return showFech('Não encontrei o período no arquivo do Yooga.',false);
   const map={'debito':'debito','credito':'credito','pix':'pix','dinheiro':'dinheiro'};
   const trs=[...doc.querySelectorAll('tr')];
   const rows=[];
@@ -1057,27 +1061,27 @@ async function parseYooga(file){
         const money=rest.find(c=>/\d,\d{2}$/.test(c));
         rows.push({method:map[key],gross:brnum(money),qty});break;
       }}});
-  if(!rows.length)return alert('Não reconheci as formas de pagamento no Yooga.');
+  if(!rows.length)return showFech('Não reconheci as formas de pagamento no Yooga.',false);
   await sb.from('fech_pdv').delete().eq('unit_id',curUnit).eq('source','salao').eq('period_start',per.s).eq('period_end',per.e);
   await sb.from('fech_pdv').insert(rows.map(r=>({unit_id:curUnit,period_start:per.s,period_end:per.e,source:'salao',method:r.method,gross:r.gross,qty:r.qty,file_name:file.name})));
-  alert('Yooga: '+rows.length+' formas de pagamento importadas ('+rows.map(r=>r.method).join(', ')+').');
+  showFech('✓ Yooga (salão): '+rows.length+' formas importadas — '+rows.map(r=>r.method+' '+brl(r.gross)).join(' · '));
 }
 async function parseBrendi(file){
   const txt=await file.text();
   const per=periodFromText(txt)||{s:null,e:null};
   const mt=txt.match(/Vendas Totais \(R\$\);([\d.,]+)/i);
   const mp=txt.match(/Total de Pedidos;(\d+)/i);
-  if(!per.s||!mt)return alert('Não reconheci o formato do relatório da Brendi.');
+  if(!per.s||!mt)return showFech('Não reconheci o formato do relatório da Brendi.',false);
   await sb.from('fech_pdv').delete().eq('unit_id',curUnit).eq('source','delivery').eq('period_start',per.s).eq('period_end',per.e);
   await sb.from('fech_pdv').insert({unit_id:curUnit,period_start:per.s,period_end:per.e,source:'delivery',method:'online',gross:brnum(mt[1]),qty:mp?parseInt(mp[1]):0,file_name:file.name});
-  alert('Brendi: R$ '+mt[1]+' em '+(mp?mp[1]:'?')+' pedidos importados.');
+  showFech('✓ Brendi (delivery): R$ '+mt[1]+' em '+(mp?mp[1]:'?')+' pedidos.');
 }
 async function parseRede(file){
   const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});
   const sh=wb.Sheets['vendas']||wb.Sheets[wb.SheetNames[0]];
   const rows=XLSX.utils.sheet_to_json(sh,{header:1});
   let hi=rows.findIndex(r=>r&&r.some(c=>/data da venda/i.test((c||'').toString())));
-  if(hi<0)return alert('Não reconheci o cabeçalho do relatório da Rede.');
+  if(hi<0)return showFech('Não reconheci o cabeçalho do relatório da Rede.',false);
   const H=rows[hi].map(c=>(c||'').toString().toLowerCase());
   const ci={st:H.findIndex(h=>h.includes('status')),mod:H.findIndex(h=>h.includes('modalidade')),
     bnd:H.findIndex(h=>h.includes('bandeira')),gr:H.findIndex(h=>h.includes('valor da venda original')),
@@ -1090,16 +1094,16 @@ async function parseRede(file){
     if(!agg[k])agg[k]={method,brand,gross:0,net:0,qty:0};
     agg[k].gross+=(+r[ci.gr]||0);agg[k].net+=(+r[ci.nt]||0);agg[k].qty++;
     const d=(r[ci.dt]||'').toString().slice(0,10);if(d){if(!dmin||d<dmin)dmin=d;if(!dmax||d>dmax)dmax=d;}}
-  const list=Object.values(agg);if(!list.length)return alert('Nenhuma venda aprovada no arquivo da Rede.');
+  const list=Object.values(agg);if(!list.length)return showFech('Nenhuma venda aprovada no arquivo da Rede.',false);
   const ps=dmin,pe=dmax;
   await sb.from('fech_mach').delete().eq('unit_id',curUnit).eq('acquirer','Itaú').eq('period_start',ps).eq('period_end',pe);
   await sb.from('fech_mach').insert(list.map(a=>({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Itaú',method:a.method,brand:a.brand,gross:Math.round(a.gross*100)/100,net:Math.round(a.net*100)/100,qty:a.qty,origin:'auto',file_name:file.name})));
-  alert('Rede/Itaú: '+list.length+' grupos (crédito/débito × bandeira) importados. Bruto total R$ '+list.reduce((s,a)=>s+a.gross,0).toFixed(2));
+  showFech('✓ Rede/Itaú: '+list.length+' grupos importados — bruto total '+brl(list.reduce((s,a)=>s+a.gross,0)));
 }
 async function addSicoobCapture(){
   const per=document.getElementById('scPeriod').value.trim();
   const deb=brnum(val('scDeb')),cred=brnum(val('scCred'));
-  if(!deb&&!cred)return alert('Informe ao menos débito ou crédito do Sicoob.');
+  if(!deb&&!cred)return showFech('Informe ao menos débito ou crédito do Sicoob.',false);
   // usa o período dos arquivos já importados, se houver
   const ref=[...fechMach,...fechPdv].filter(x=>x.unit_id===curUnit).sort((a,b)=>b.period_start<a.period_start?-1:1)[0];
   const ps=ref?ref.period_start:new Date().toISOString().slice(0,10), pe=ref?ref.period_end:ps;
@@ -1109,7 +1113,7 @@ async function addSicoobCapture(){
   if(cred)ins.push({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Sicoob',method:'credito',brand:'—',gross:cred,net:cred,qty:0,origin:'manual'});
   await sb.from('fech_mach').insert(ins);
   document.getElementById('scDeb').value='';document.getElementById('scCred').value='';
-  await loadAll();renderFechamento();alert('Captura do Sicoob salva para o período '+ps+' a '+pe+'.');
+  await loadAll();renderFechamento();showFech('✓ Captura do Sicoob salva ('+ps+' a '+pe+').');
 }
 function renderFechamento(){
   const area=document.getElementById('fechArea');if(!area)return;
