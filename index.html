@@ -1076,8 +1076,15 @@ async function parseBrendi(file){
   await sb.from('fech_pdv').insert({unit_id:curUnit,period_start:per.s,period_end:per.e,source:'delivery',method:'online',gross:brnum(mt[1]),qty:mp?parseInt(mp[1]):0,file_name:file.name});
   showFech('✓ Brendi (delivery): R$ '+mt[1]+' em '+(mp?mp[1]:'?')+' pedidos.');
 }
+function toISODate(v){
+  if(v instanceof Date&&!isNaN(v))return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+  const s=(v==null?'':v).toString();
+  let m=s.match(/(\d{4})-(\d{2})-(\d{2})/);if(m)return `${m[1]}-${m[2]}-${m[3]}`;
+  m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/);if(m)return `${m[3]}-${m[2]}-${m[1]}`;
+  return null;
+}
 async function parseRede(file){
-  const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});
+  const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array',cellDates:true});
   const sh=wb.Sheets['vendas']||wb.Sheets[wb.SheetNames[0]];
   const rows=XLSX.utils.sheet_to_json(sh,{header:1});
   let hi=rows.findIndex(r=>r&&r.some(c=>/data da venda/i.test((c||'').toString())));
@@ -1093,11 +1100,13 @@ async function parseRede(file){
     const brand=(r[ci.bnd]||'—').toString();const k=method+'|'+brand;
     if(!agg[k])agg[k]={method,brand,gross:0,net:0,qty:0};
     agg[k].gross+=(+r[ci.gr]||0);agg[k].net+=(+r[ci.nt]||0);agg[k].qty++;
-    const d=(r[ci.dt]||'').toString().slice(0,10);if(d){if(!dmin||d<dmin)dmin=d;if(!dmax||d>dmax)dmax=d;}}
+    const d=toISODate(r[ci.dt]);if(d){if(!dmin||d<dmin)dmin=d;if(!dmax||d>dmax)dmax=d;}}
   const list=Object.values(agg);if(!list.length)return showFech('Nenhuma venda aprovada no arquivo da Rede.',false);
+  if(!dmin)return showFech('Não consegui ler as datas do arquivo da Rede.',false);
   const ps=dmin,pe=dmax;
   await sb.from('fech_mach').delete().eq('unit_id',curUnit).eq('acquirer','Itaú').eq('period_start',ps).eq('period_end',pe);
-  await sb.from('fech_mach').insert(list.map(a=>({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Itaú',method:a.method,brand:a.brand,gross:Math.round(a.gross*100)/100,net:Math.round(a.net*100)/100,qty:a.qty,origin:'auto',file_name:file.name})));
+  const {error}=await sb.from('fech_mach').insert(list.map(a=>({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Itaú',method:a.method,brand:a.brand,gross:Math.round(a.gross*100)/100,net:Math.round(a.net*100)/100,qty:a.qty,origin:'auto',file_name:file.name})));
+  if(error)return showFech('Erro ao salvar Rede: '+error.message,false);
   showFech('✓ Rede/Itaú: '+list.length+' grupos importados — bruto total '+brl(list.reduce((s,a)=>s+a.gross,0)));
 }
 async function addSicoobCapture(){
