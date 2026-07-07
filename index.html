@@ -1332,7 +1332,7 @@ function renderFechamento(){
   const expectedCard=salaoCartao+delivCartao;
   const gap=machCartao-expectedCard;
   let h=periodSelector+`<div class="sec-title">Resumo do período ${fmtBr(sel)+' a '+fmtBr(pInfo.period_end)}</div>`;
-  h+=`<div class="grid g4">${kpi('Vendas salão',brl(salaoTotal))}${kpi('Vendas delivery',brl(delivery))}${kpi('Total geral',brl(salaoTotal+delivery))}${kpi('Dinheiro (espécie)',brl(salaoDin),'só no salão')}</div>`;
+  h+=`<div class="grid g4">${kpi('Vendas salão',brl(salaoTotal))}${kpi('Vendas delivery',brl(delivery))}${kpi('Total geral',brl(salaoTotal+delivery))}${kpi('Dinheiro (espécie)',brl(salaoDin+delivDin),'salão '+brl(salaoDin)+' · delivery '+brl(delivDin))}</div>`;
   // ===== CONCILIAÇÃO TOTAL (a que fecha de verdade) =====
   const close=fechClose.filter(x=>x.unit_id===curUnit&&x.period_start===sel)[0];
   const cash=(close&&+close.cash_counted>0)?(+close.cash_counted):(salaoDin+delivDin);
