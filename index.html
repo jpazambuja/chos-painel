@@ -133,6 +133,7 @@ tr:last-child td{border-bottom:none}
     <button data-t="relatorios">Relatórios</button>
     <button data-t="financeiro">Financeiro</button>
     <button data-t="banco">Banco</button>
+    <button data-t="fechamento">Fechamento</button>
     <button data-t="escala">Escala</button>
     <button data-t="ponto">Ponto & Diaristas</button>
     <button data-t="equipe">Equipe</button>
@@ -220,6 +221,29 @@ tr:last-child td{border-bottom:none}
     <div id="bankArea"></div>
   </section>
 
+  <section id="fechamento" class="pane">
+    <h2>Fechamento Diário</h2><div class="sub">Cruza as vendas do PDV (salão + delivery) com o que foi capturado nas maquininhas. Aponta se algo não bate.</div>
+    <div class="card">
+      <div class="sec-title" style="margin-top:0">1 · Suba os arquivos do período</div>
+      <div class="unitpick" style="margin-bottom:8px"><span class="muted">Tipo do arquivo:</span>
+        <select id="fechType" style="width:auto">
+          <option value="yooga">Vendas Salão — Yooga (.xls)</option>
+          <option value="brendi">Vendas Delivery — Brendi (.csv)</option>
+          <option value="rede">Maquininha Rede/Itaú (.xlsx)</option>
+        </select></div>
+      <div id="fechDrop" class="drop"><b>Arraste o arquivo aqui</b> ou clique — conforme o tipo selecionado acima<input type="file" id="fechFile" accept=".xls,.xlsx,.csv,.htm,.html" style="display:none"></div>
+      <div class="sec-title">2 · Maquininha Sicoob (lançamento manual — não exporta arquivo)</div>
+      <div class="grid g4">
+        <div><label class="fld">Período (mesmo dos arquivos)</label><input id="scPeriod" placeholder="ex: 01/07 a 05/07"></div>
+        <div><label class="fld">Débito bruto R$</label><input id="scDeb" placeholder="0,00"></div>
+        <div><label class="fld">Crédito bruto R$</label><input id="scCred" placeholder="0,00"></div>
+        <div style="display:flex;align-items:flex-end"><button class="primary full" onclick="addSicoobCapture()">Salvar Sicoob</button></div>
+      </div>
+      <div class="hint">O débito e crédito brutos do período que passaram na maquininha do Sicoob (some os dias dos seus relatórios de venda do app Sicoob).</div>
+    </div>
+    <div id="fechArea"></div>
+  </section>
+
   <section id="escala" class="pane">
     <h2>Escala</h2><div class="sub">Escala planejada por funcionário. Clique numa célula para alternar turno/folga.</div>
     <div id="escalaArea" style="margin-top:12px"></div>
@@ -298,7 +322,7 @@ const FICHAS=[
 
 /* ===================== ESTADO ===================== */
 let session=null, profile=null, units=[], curUnit=null;
-let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[], reports=[], bank=[], cardRates=[];
+let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[], reports=[], bank=[], cardRates=[], fechPdv=[], fechMach=[];
 let clockTimer=null, realtimeCh=null, histChart=null, repChart=null;
 const brl=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
 const brl2=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -403,7 +427,7 @@ async function loadUnits(){
 }
 function onUnitChange(){curUnit=document.getElementById('unitSel').value;renderAll();}
 async function loadAll(){
-  const [pr,sh,sc,pu,tk,gl,fi,rp,bk,cr]=await Promise.all([
+  const [pr,sh,sc,pu,tk,gl,fi,rp,bk,cr,fp,fm]=await Promise.all([
     sb.from('profiles').select('*').order('created_at'),
     sb.from('shifts').select('*').order('sort'),
     sb.from('schedule').select('*'),
@@ -414,9 +438,11 @@ async function loadAll(){
     sb.from('reports').select('*').order('ref_month'),
     sb.from('bank_tx').select('*').order('tx_date'),
     sb.from('card_rates').select('*').order('acquirer'),
+    sb.from('fech_pdv').select('*').order('period_start'),
+    sb.from('fech_mach').select('*').order('period_start'),
   ]);
   emps=(pr.data||[]).filter(p=>p.role!=='gestor');
-  shifts=sh.data||[]; punches=pu.data||[]; tasks=tk.data||[]; goals=gl.data||[]; finance=fi.data||[]; reports=rp.data||[]; bank=bk.data||[]; cardRates=cr.data||[];
+  shifts=sh.data||[]; punches=pu.data||[]; tasks=tk.data||[]; goals=gl.data||[]; finance=fi.data||[]; reports=rp.data||[]; bank=bk.data||[]; cardRates=cr.data||[]; fechPdv=(fp&&fp.data)||[]; fechMach=(fm&&fm.data)||[];
   schedule={}; (sc.data||[]).forEach(r=>schedule[r.employee_id+'|'+r.day]=r.value);
 }
 async function loadEmpData(){
@@ -437,7 +463,7 @@ function bindTabs(){
     b.classList.add('active');document.getElementById(b.dataset.t).classList.add('active');
   });
 }
-function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas();renderEscala();renderPonto();renderEquipe();renderHist();renderFinance();renderBanco();}
+function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas();renderEscala();renderPonto();renderEquipe();renderHist();renderFinance();renderBanco();renderFechamento();}
 
 /* ===================== OVERVIEW ===================== */
 function renderOverview(){
@@ -900,9 +926,11 @@ function parseBankCSV(txt){
   return out;
 }
 function autoCat(desc){const d=norm(desc);
-  if(/cielo|rede|getnet|stone|pagseguro|mercado pago|cart|credito|debito|maquin/.test(d))return 'Cartão/Maquininha';
+  if(/brendi/.test(d))return 'Brendi/Delivery';
+  if(/sipag|cr ant|cr cmp|cr cps|cielo|rede|getnet|stone|pagseguro|mercado pago|maquin/.test(d))return 'Cartão/Maquininha';
+  if(/pedag|tag pg ped/.test(d))return 'Pedágio';
+  if(/tarifa|iof|manutencao|cta garantida|juros/.test(d))return 'Tarifas/Juros';
   if(/pix/.test(d))return 'Pix';
-  if(/tarifa|juros|iof|manutencao/.test(d))return 'Tarifas bancárias';
   return 'Não classificado';}
 async function handleBankFile(file){
   const txt=await file.text();
@@ -922,7 +950,7 @@ async function delBank(id){if(!confirm('Excluir lançamento do extrato?'))return
 async function setRate(id,field,v){const patch={};patch[field]=parseFloat((v||'0').replace(',','.'))||0;
   await sb.from('card_rates').update(patch).eq('id',id);const r=cardRates.find(x=>x.id===id);if(r)r[field]=patch[field];renderRatesCalc();}
 async function addRate(){const acq=val('nrAcq'),br=val('nrBrand')||'—',met=val('nrMet');if(!acq||!met)return alert('Informe adquirente e modalidade.');
-  await sb.from('card_rates').insert({unit_id:curUnit,acquirer:acq,brand:br,method:met,rate_pct:parseFloat(val('nrPct').replace(',','.'))||0,days:parseInt(val('nrDays'))||1});
+  await sb.from('card_rates').insert({unit_id:curUnit,acquirer:acq,brand:br,method:met,rate_pct:parseFloat(val('nrPct').replace(',','.'))||0,antecip_pct:parseFloat(val('nrAntecip').replace(',','.'))||0,fixed_fee:parseFloat(val('nrFixed').replace(',','.'))||0,days:parseInt(val('nrDays'))||1});
   await loadAll();renderBanco();}
 async function delRate(id){if(!confirm('Excluir taxa?'))return;await sb.from('card_rates').delete().eq('id',id);await loadAll();renderBanco();}
 function renderRatesCalc(){
@@ -930,22 +958,25 @@ function renderRatesCalc(){
   if(!g||!sel||!out)return;
   const gross=parseFloat((g.value||'').replace(/\./g,'').replace(',','.'))||0;
   const r=cardRates.find(x=>x.id===sel.value);
-  if(gross>0&&r){const liq=gross*(1-(+r.rate_pct)/100);const taxa=gross-liq;
-    out.innerHTML=`Bruto ${brl2(gross)} · taxa ${(+r.rate_pct).toFixed(2)}% = <b style="color:var(--red)">−${brl2(taxa)}</b> → líquido a cair <b style="color:var(--greenl)">${brl2(liq)}</b> em ~${r.days} dia(s).`;}
+  if(gross>0&&r){const totPct=(+r.rate_pct)+(+r.antecip_pct);const fix=(+r.fixed_fee)||0;const liq=gross*(1-totPct/100)-fix;const taxa=gross-liq;
+    out.innerHTML=`Bruto ${brl2(gross)} · MDR ${(+r.rate_pct).toFixed(2)}% + antecip. ${(+r.antecip_pct).toFixed(2)}%${fix?' + fixa '+brl2(fix)+'/pedido':''} → desconto <b style="color:var(--red)">−${brl2(taxa)}</b> → líquido <b style="color:var(--greenl)">${brl2(liq)}</b> em ~${r.days} dia(s).`;}
   else out.textContent='Informe o valor bruto e escolha a taxa.';
 }
 function renderRates(){
   const rows=cardRates.filter(r=>!r.unit_id||r.unit_id===curUnit);
   let h='<div class="card"><div class="sec-title" style="margin-top:0">Taxas de cartão (MDR) — Itaú · Sicoob · Brendi</div>';
-  h+='<div style="overflow:auto"><table><thead><tr><th>Adquirente</th><th>Bandeira</th><th>Modalidade</th><th class="r">Taxa %</th><th class="r">Prazo (dias)</th><th></th></tr></thead><tbody>';
+  h+='<div style="overflow:auto"><table><thead><tr><th>Adquirente</th><th>Bandeira</th><th>Modalidade</th><th class="r">MDR %</th><th class="r">Antecip. %</th><th class="r">Fixa R$/pedido</th><th class="r">Prazo</th><th></th></tr></thead><tbody>';
   rows.forEach(r=>{h+=`<tr><td>${esc(r.acquirer)}</td><td>${esc(r.brand||'—')}</td><td>${esc(r.method)}</td>
-    <td class="r"><input value="${(+r.rate_pct).toString().replace('.',',')}" style="width:80px;text-align:right;padding:5px" onchange="setRate('${r.id}','rate_pct',this.value)"></td>
-    <td class="r"><input value="${r.days}" style="width:70px;text-align:right;padding:5px" onchange="setRate('${r.id}','days',this.value)"></td>
+    <td class="r"><input value="${(+r.rate_pct).toString().replace('.',',')}" style="width:70px;text-align:right;padding:5px" onchange="setRate('${r.id}','rate_pct',this.value)"></td>
+    <td class="r"><input value="${(+r.antecip_pct).toString().replace('.',',')}" style="width:70px;text-align:right;padding:5px" onchange="setRate('${r.id}','antecip_pct',this.value)"></td>
+    <td class="r"><input value="${(+r.fixed_fee).toString().replace('.',',')}" style="width:70px;text-align:right;padding:5px" onchange="setRate('${r.id}','fixed_fee',this.value)"></td>
+    <td class="r"><input value="${r.days}" style="width:55px;text-align:right;padding:5px" onchange="setRate('${r.id}','days',this.value)"></td>
     <td><span class="del" onclick="delRate('${r.id}')">×</span></td></tr>`;});
   h+='</tbody></table></div>';
-  h+=`<div class="addbar"><input id="nrAcq" placeholder="Adquirente" style="max-width:120px"><input id="nrBrand" placeholder="Bandeira" style="max-width:110px"><input id="nrMet" placeholder="Modalidade" style="max-width:140px">
-    <input id="nrPct" placeholder="Taxa %" style="max-width:90px"><input id="nrDays" placeholder="Prazo" style="max-width:80px">
-    <button class="primary" onclick="addRate()">＋ Taxa</button></div>`;
+  h+=`<div class="addbar"><input id="nrAcq" placeholder="Adquirente" style="max-width:100px"><input id="nrBrand" placeholder="Bandeira" style="max-width:90px"><input id="nrMet" placeholder="Modalidade" style="max-width:110px">
+    <input id="nrPct" placeholder="MDR %" style="max-width:75px"><input id="nrAntecip" placeholder="Antecip.%" style="max-width:80px"><input id="nrFixed" placeholder="Fixa R$" style="max-width:75px"><input id="nrDays" placeholder="Prazo" style="max-width:60px">
+    <button class="primary" onclick="addRate()">＋ Taxa</button></div>
+    <div class="hint"><b>MDR</b> = taxa da maquininha (% por venda). <b>Antecip.</b> = taxa de antecipação por venda (crédito recebido antes do prazo). <b>Fixa R$/pedido</b> = valor fixo por pedido (ex.: Brendi Pix 0,5% + R$0,40). O líquido desconta MDR + antecipação + a taxa fixa.</div>`;
   // calculadora de líquido
   h+=`<div class="sec-title">Calculadora de líquido</div>
     <div class="addbar"><input id="rcGross" placeholder="valor bruto R$" style="max-width:160px" oninput="renderRatesCalc()">
@@ -994,6 +1025,130 @@ function renderBanco(){
   else h+='<div class="muted">Nenhum lançamento importado ainda. Suba um extrato .ofx ou .csv acima.</div>';
   area.innerHTML=h;
 }
+
+/* ===================== FECHAMENTO ===================== */
+function brnum(s){s=(s||'').toString().trim().replace(/r\$/i,'').trim();
+  if(/,/.test(s))return parseFloat(s.replace(/\./g,'').replace(',','.'))||0;
+  return parseFloat(s.replace(/[^0-9.\-]/g,''))||0;}
+function periodFromText(t){const m=(t||'').match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})[\s\S]{0,8}?(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+  if(m)return{s:`${m[3]}-${m[2]}-${m[1]}`,e:`${m[6]}-${m[5]}-${m[4]}`};return null;}
+async function handleFechFile(file){
+  const type=document.getElementById('fechType').value;
+  try{
+    if(type==='yooga')await parseYooga(file);
+    else if(type==='brendi')await parseBrendi(file);
+    else if(type==='rede')await parseRede(file);
+  }catch(e){console.error(e);return alert('Erro ao ler o arquivo: '+e.message);}
+  await loadAll();renderFechamento();
+}
+async function parseYooga(file){
+  const txt=await file.text();
+  const doc=new DOMParser().parseFromString(txt,'text/html');
+  const per=periodFromText(doc.body.textContent)||{s:null,e:null};
+  if(!per.s)return alert('Não encontrei o período no arquivo do Yooga.');
+  const map={'debito':'debito','credito':'credito','pix':'pix','dinheiro':'dinheiro'};
+  const trs=[...doc.querySelectorAll('tr')];
+  const rows=[];
+  trs.forEach(tr=>{const cells=[...tr.querySelectorAll('td,th')].map(td=>td.textContent.trim());
+    for(let i=0;i<cells.length;i++){const key=norm(cells[i]);
+      if(map[key]){
+        const rest=cells.slice(i+1);
+        const qty=parseInt((rest.find(c=>/^\d+$/.test(c))||'0'));
+        const money=rest.find(c=>/\d,\d{2}$/.test(c));
+        rows.push({method:map[key],gross:brnum(money),qty});break;
+      }}});
+  if(!rows.length)return alert('Não reconheci as formas de pagamento no Yooga.');
+  await sb.from('fech_pdv').delete().eq('unit_id',curUnit).eq('source','salao').eq('period_start',per.s).eq('period_end',per.e);
+  await sb.from('fech_pdv').insert(rows.map(r=>({unit_id:curUnit,period_start:per.s,period_end:per.e,source:'salao',method:r.method,gross:r.gross,qty:r.qty,file_name:file.name})));
+  alert('Yooga: '+rows.length+' formas de pagamento importadas ('+rows.map(r=>r.method).join(', ')+').');
+}
+async function parseBrendi(file){
+  const txt=await file.text();
+  const per=periodFromText(txt)||{s:null,e:null};
+  const mt=txt.match(/Vendas Totais \(R\$\);([\d.,]+)/i);
+  const mp=txt.match(/Total de Pedidos;(\d+)/i);
+  if(!per.s||!mt)return alert('Não reconheci o formato do relatório da Brendi.');
+  await sb.from('fech_pdv').delete().eq('unit_id',curUnit).eq('source','delivery').eq('period_start',per.s).eq('period_end',per.e);
+  await sb.from('fech_pdv').insert({unit_id:curUnit,period_start:per.s,period_end:per.e,source:'delivery',method:'online',gross:brnum(mt[1]),qty:mp?parseInt(mp[1]):0,file_name:file.name});
+  alert('Brendi: R$ '+mt[1]+' em '+(mp?mp[1]:'?')+' pedidos importados.');
+}
+async function parseRede(file){
+  const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});
+  const sh=wb.Sheets['vendas']||wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(sh,{header:1});
+  let hi=rows.findIndex(r=>r&&r.some(c=>/data da venda/i.test((c||'').toString())));
+  if(hi<0)return alert('Não reconheci o cabeçalho do relatório da Rede.');
+  const H=rows[hi].map(c=>(c||'').toString().toLowerCase());
+  const ci={st:H.findIndex(h=>h.includes('status')),mod:H.findIndex(h=>h.includes('modalidade')),
+    bnd:H.findIndex(h=>h.includes('bandeira')),gr:H.findIndex(h=>h.includes('valor da venda original')),
+    nt:H.findIndex(h=>h.includes('valor líquido')||h.includes('valor liquido')),dt:H.findIndex(h=>h.includes('data da venda'))};
+  const agg={};let dmin=null,dmax=null;
+  for(let i=hi+1;i<rows.length;i++){const r=rows[i];if(!r||!r[ci.mod])continue;
+    if(ci.st>=0&&!/aprovada/i.test((r[ci.st]||'').toString()))continue;
+    const mod=norm(r[ci.mod]);const method=mod.includes('cred')?'credito':(mod.includes('deb')?'debito':mod);
+    const brand=(r[ci.bnd]||'—').toString();const k=method+'|'+brand;
+    if(!agg[k])agg[k]={method,brand,gross:0,net:0,qty:0};
+    agg[k].gross+=(+r[ci.gr]||0);agg[k].net+=(+r[ci.nt]||0);agg[k].qty++;
+    const d=(r[ci.dt]||'').toString().slice(0,10);if(d){if(!dmin||d<dmin)dmin=d;if(!dmax||d>dmax)dmax=d;}}
+  const list=Object.values(agg);if(!list.length)return alert('Nenhuma venda aprovada no arquivo da Rede.');
+  const ps=dmin,pe=dmax;
+  await sb.from('fech_mach').delete().eq('unit_id',curUnit).eq('acquirer','Itaú').eq('period_start',ps).eq('period_end',pe);
+  await sb.from('fech_mach').insert(list.map(a=>({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Itaú',method:a.method,brand:a.brand,gross:Math.round(a.gross*100)/100,net:Math.round(a.net*100)/100,qty:a.qty,origin:'auto',file_name:file.name})));
+  alert('Rede/Itaú: '+list.length+' grupos (crédito/débito × bandeira) importados. Bruto total R$ '+list.reduce((s,a)=>s+a.gross,0).toFixed(2));
+}
+async function addSicoobCapture(){
+  const per=document.getElementById('scPeriod').value.trim();
+  const deb=brnum(val('scDeb')),cred=brnum(val('scCred'));
+  if(!deb&&!cred)return alert('Informe ao menos débito ou crédito do Sicoob.');
+  // usa o período dos arquivos já importados, se houver
+  const ref=[...fechMach,...fechPdv].filter(x=>x.unit_id===curUnit).sort((a,b)=>b.period_start<a.period_start?-1:1)[0];
+  const ps=ref?ref.period_start:new Date().toISOString().slice(0,10), pe=ref?ref.period_end:ps;
+  await sb.from('fech_mach').delete().eq('unit_id',curUnit).eq('acquirer','Sicoob').eq('period_start',ps).eq('period_end',pe);
+  const ins=[];
+  if(deb)ins.push({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Sicoob',method:'debito',brand:'—',gross:deb,net:deb,qty:0,origin:'manual'});
+  if(cred)ins.push({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Sicoob',method:'credito',brand:'—',gross:cred,net:cred,qty:0,origin:'manual'});
+  await sb.from('fech_mach').insert(ins);
+  document.getElementById('scDeb').value='';document.getElementById('scCred').value='';
+  await loadAll();renderFechamento();alert('Captura do Sicoob salva para o período '+ps+' a '+pe+'.');
+}
+function renderFechamento(){
+  const area=document.getElementById('fechArea');if(!area)return;
+  const pdv=fechPdv.filter(x=>x.unit_id===curUnit), mach=fechMach.filter(x=>x.unit_id===curUnit);
+  if(!pdv.length&&!mach.length){area.innerHTML='<div class="muted" style="margin-top:14px">Suba os arquivos acima para ver o fechamento.</div>';return;}
+  const sumPdv=(src,met)=>pdv.filter(x=>x.source===src&&(!met||x.method===met)).reduce((s,x)=>s+(+x.gross),0);
+  const salaoDeb=sumPdv('salao','debito'), salaoCred=sumPdv('salao','credito'), salaoPix=sumPdv('salao','pix'), salaoDin=sumPdv('salao','dinheiro');
+  const salaoCartao=salaoDeb+salaoCred;
+  const delivery=sumPdv('delivery',null);
+  const salaoTotal=salaoDeb+salaoCred+salaoPix+salaoDin;
+  const machCred=mach.filter(x=>x.method==='credito').reduce((s,x)=>s+(+x.gross),0);
+  const machDeb=mach.filter(x=>x.method==='debito').reduce((s,x)=>s+(+x.gross),0);
+  const machCartao=machCred+machDeb;
+  const gap=machCartao-salaoCartao;
+  const per=(pdv[0]||mach[0]);
+  let h=`<div class="sec-title">Resumo do período ${per?fmtBr(per.period_start)+' a '+fmtBr(per.period_end):''}</div>`;
+  h+=`<div class="grid g4">${kpi('Vendas salão',brl(salaoTotal))}${kpi('Vendas delivery',brl(delivery))}${kpi('Total geral',brl(salaoTotal+delivery))}${kpi('Dinheiro (espécie)',brl(salaoDin),'só no salão')}</div>`;
+  // Conciliação de cartão
+  const cls=Math.abs(gap)<50?'b-good':(Math.abs(gap)<300?'b-warn':'b-bad');
+  h+=`<div class="card" style="margin-top:14px;border-color:${Math.abs(gap)<50?'var(--greenl)':'var(--red)'}">
+    <div class="sec-title" style="margin-top:0">Conciliação de cartão — PDV × Maquininhas</div>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:baseline">
+      <div><div class="lbl muted" style="font-size:12px">Cartão no PDV (salão)</div><div style="font-size:20px;font-weight:600">${brl(salaoCartao)}</div><div class="bl muted">déb ${brl(salaoDeb)} · créd ${brl(salaoCred)}</div></div>
+      <div style="font-size:20px;color:var(--mut)">vs</div>
+      <div><div class="lbl muted" style="font-size:12px">Capturado nas maquininhas</div><div style="font-size:20px;font-weight:600">${brl(machCartao)}</div><div class="bl muted">déb ${brl(machDeb)} · créd ${brl(machCred)}</div></div>
+      <div style="font-size:20px;color:var(--mut)">=</div>
+      <div><div class="lbl muted" style="font-size:12px">Diferença</div><div><span class="badge ${cls}" style="font-size:15px">${brl(gap)}</span></div></div>
+    </div>
+    <div class="hint">${Math.abs(gap)<50?'✓ Bate. As vendas de cartão do PDV conferem com o capturado nas maquininhas.':(gap>0?'⚠️ As maquininhas capturaram <b>mais</b> que o PDV registrou. Pode haver venda passada na maquininha sem lançar no PDV (produto saindo sem registro).':'⚠️ O PDV registrou <b>mais</b> cartão do que caiu nas maquininhas. Verifique vendas canceladas ou não capturadas.')} ${mach.some(x=>x.acquirer==='Sicoob')?'':'<b>Falta lançar a captura do Sicoob</b> para o cartão fechar.'}</div>
+  </div>`;
+  // Detalhe maquininhas
+  h+='<div class="sec-title">Capturado por maquininha</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Adquirente</th><th>Modalidade</th><th class="r">Bruto</th><th class="r">Líquido</th></tr></thead><tbody>';
+  ['Itaú','Sicoob'].forEach(acq=>{['credito','debito'].forEach(m=>{const rs=mach.filter(x=>x.acquirer===acq&&x.method===m);if(rs.length){const g=rs.reduce((s,x)=>s+(+x.gross),0),n=rs.reduce((s,x)=>s+(+x.net),0);h+=`<tr><td>${acq}</td><td class="muted">${m}</td><td class="r">${brl2(g)}</td><td class="r">${n?brl2(n):'—'}</td></tr>`;}});});
+  h+='</tbody></table></div>';
+  // Pix e delivery
+  h+=`<div class="hint gold" style="margin-top:12px">Pix no salão: <b>${brl(salaoPix)}</b> · Delivery (Brendi): <b>${brl(delivery)}</b>. Estes conferem contra os recebimentos Pix/Brendi no extrato (aba Banco).</div>`;
+  area.innerHTML=h;
+}
+function fmtBr(d){if(!d)return '';const[y,m,dd]=d.split('-');return `${dd}/${m}`;}
 
 /* ===================== APP FUNCIONÁRIO ===================== */
 function tickClock(){const n=new Date();document.getElementById('clockTime').textContent=
@@ -1046,6 +1201,12 @@ function wireUploads(){
     ['dragenter','dragover'].forEach(ev=>bankDrop.addEventListener(ev,e=>{e.preventDefault();bankDrop.classList.add('over');}));
     ['dragleave','drop'].forEach(ev=>bankDrop.addEventListener(ev,e=>{e.preventDefault();bankDrop.classList.remove('over');}));
     bankDrop.addEventListener('drop',e=>{if(e.dataTransfer.files[0])handleBankFile(e.dataTransfer.files[0]);});}
+  const fechDrop=document.getElementById('fechDrop'),fechFile=document.getElementById('fechFile');
+  if(fechDrop&&fechFile){fechDrop.onclick=()=>fechFile.click();
+    fechFile.onchange=e=>{if(e.target.files[0])handleFechFile(e.target.files[0]);e.target.value='';};
+    ['dragenter','dragover'].forEach(ev=>fechDrop.addEventListener(ev,e=>{e.preventDefault();fechDrop.classList.add('over');}));
+    ['dragleave','drop'].forEach(ev=>fechDrop.addEventListener(ev,e=>{e.preventDefault();fechDrop.classList.remove('over');}));
+    fechDrop.addEventListener('drop',e=>{if(e.dataTransfer.files[0])handleFechFile(e.dataTransfer.files[0]);});}
   _wired=true;
 }
 
