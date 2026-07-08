@@ -245,14 +245,10 @@ tr:last-child td{border-bottom:none}
         </select></div>
       <div id="fechDrop" class="drop"><b>Arraste aqui</b> ou clique — do tipo selecionado acima<input type="file" id="fechFile" accept=".xls,.xlsx,.csv,.pdf,.htm,.html,.ofx,.txt" style="display:none"></div>
       <div id="fechMsg" style="display:none;margin-top:10px;padding:10px 12px;border-radius:8px;font-size:13px"></div>
-      <div class="sec-title">2 · Maquininha Sicoob (lançamento manual — não exporta arquivo)</div>
-      <div class="grid g4">
-        <div><label class="fld">Período (mesmo dos arquivos)</label><input id="scPeriod" placeholder="ex: 01/07 a 05/07"></div>
-        <div><label class="fld">Débito bruto R$</label><input id="scDeb" placeholder="0,00"></div>
-        <div><label class="fld">Crédito bruto R$</label><input id="scCred" placeholder="0,00"></div>
-        <div style="display:flex;align-items:flex-end"><button class="primary full" onclick="addSicoobCapture()">Salvar Sicoob</button></div>
-      </div>
-      <div class="hint">O débito e crédito brutos do período que passaram na maquininha do Sicoob (some os dias dos seus relatórios de venda do app Sicoob).</div>
+      <div class="sec-title">2 · Maquininha Sicoob (lançamento manual — por bandeira)</div>
+      <div id="sicoobFields"></div>
+      <button class="primary full" onclick="addSicoobCapture()" style="margin-top:8px">Salvar Sicoob (por bandeira)</button>
+      <div class="hint">Lance o bruto de cada bandeira do período (some os dias do app Sicoob). O sistema aplica a <b>taxa exata cadastrada</b> de cada bandeira (aba Taxas) para achar o líquido e a taxa retida — sem estimativa por média.</div>
       <div class="sec-title">3 · Conferência do caixa (para fechar o total)</div>
       <div class="grid g3">
         <div><label class="fld">Dinheiro contado no caixa R$</label><input id="ccCash" placeholder="0,00"></div>
@@ -1026,18 +1022,38 @@ function autoCat(desc,amount){const d=norm(desc);const isOut=(+amount)<0;
   if(/sipag|cr ant|cr cmp|cr cps|recebimento rede|cielo|getnet|stone|pagseguro|mercado pago|maquin/.test(d))return 'Venda Cartão';
   if(/pix/.test(d))return 'Venda Pix';
   return 'Não classificado';}
-// Estima o líquido de um cartão aplicando as taxas cadastradas (aba Taxas) — usado p/ Sicoob (manual, sem líquido)
-function estNet(acquirer,method,gross){gross=+gross||0;if(!gross)return gross;
-  const a=norm(acquirer),m=norm(method).slice(0,3);
+// Estima o líquido de um cartão aplicando as taxas cadastradas (aba Taxas). Se informar bandeira, usa a taxa exata dela.
+function estNet(acquirer,method,gross,brand){gross=+gross||0;if(!gross)return gross;
+  const a=norm(acquirer),m=norm(method).slice(0,3),b=brand?norm(brand):null;
   const rs=(cardRates||[]).filter(r=>{const ra=norm(r.acquirer),rm=norm(r.method).slice(0,3);
     if(rm!==m)return false;
-    return ra.includes(a)||a.includes(ra)||(a.includes('sicoob')&&(ra.includes('sicoob')||ra.includes('sipag')))||(a.includes('ita')&&(ra.includes('ita')||ra.includes('rede')));});
-  if(!rs.length)return gross;
+    const accOk=ra.includes(a)||a.includes(ra)||(a.includes('sicoob')&&(ra.includes('sicoob')||ra.includes('sipag')))||(a.includes('ita')&&(ra.includes('ita')||ra.includes('rede')));
+    if(!accOk)return false;
+    if(b)return norm(r.brand)===b;
+    return true;});
+  if(!rs.length)return b?estNet(acquirer,method,gross,null):gross;
   const avgPct=rs.reduce((s,r)=>s+(+r.rate_pct||0)+(+r.antecip_pct||0),0)/rs.length;
   const avgFix=rs.reduce((s,r)=>s+(+r.fixed_fee||0),0)/rs.length;
   return Math.max(0,gross*(1-avgPct/100)-avgFix);}
 // Líquido efetivo de um lançamento de maquininha: usa o net real se existir, senão estima pelas taxas
-function machNetValue(x){const n=+x.net,g=+x.gross;if(n>0&&n<g)return n;return estNet(x.acquirer,x.method,g);}
+function machNetValue(x){const n=+x.net,g=+x.gross;if(n>0&&n<g)return n;return estNet(x.acquirer,x.method,g,x.brand);}
+// Combinações (modalidade+bandeira) de Sicoob cadastradas nas Taxas
+function sicoobCombos(){const seen={},out=[];
+  (cardRates||[]).filter(r=>/sicoob|sipag/.test(norm(r.acquirer))&&/cred|deb/.test(norm(r.method))).forEach(r=>{
+    const m=/cred/.test(norm(r.method))?'credito':'debito';const key=m+'|'+r.brand;if(seen[key])return;seen[key]=1;out.push({method:m,brand:r.brand});});
+  return out;}
+function renderSicoobEntry(){const el=document.getElementById('sicoobFields');if(!el)return;
+  const combos=sicoobCombos();
+  if(!combos.length){el.innerHTML='<div class="muted">Cadastre as taxas do Sicoob por bandeira na aba <b>Taxas de cartão</b> para lançar aqui.</div>';return;}
+  const ref=[...fechMach,...fechPdv].filter(x=>x.unit_id===curUnit).sort((a,b)=>b.period_start<a.period_start?-1:1)[0];
+  const ps=ref?ref.period_start:'';
+  const saved={};fechMach.filter(x=>x.unit_id===curUnit&&x.acquirer==='Sicoob'&&x.period_start===ps).forEach(x=>{saved[x.method+'|'+x.brand]=+x.gross;});
+  let h='';['credito','debito'].forEach(m=>{const cs=combos.filter(c=>c.method===m);if(!cs.length)return;
+    h+=`<div class="muted" style="margin:6px 0 2px;font-size:12px;font-weight:600">${m==='credito'?'Crédito':'Débito'}</div><div class="grid g4">`;
+    cs.forEach(c=>{const id='sc_'+m+'_'+c.brand.replace(/[^A-Za-z0-9]/g,'');const sv=saved[m+'|'+c.brand];
+      h+=`<div><label class="fld">${esc(c.brand)} R$</label><input id="${id}" data-m="${m}" data-b="${esc(c.brand)}" placeholder="0,00" value="${sv?sv.toFixed(2).replace('.',','):''}"></div>`;});
+    h+='</div>';});
+  el.innerHTML=h;}
 function showBankMsg(msg,ok){_finMsg(msg,ok);}
 function parseItauExtrato(txt){
   const chunks=txt.split(/(?=\d{2}\/\d{2}\/\d{4}\s)/);const out=[];
@@ -1142,11 +1158,13 @@ function renderBanco(){
   const rows=bank.filter(b=>!b.unit_id||b.unit_id===curUnit);
   const cats=[...new Set(rows.map(b=>b.category).filter(Boolean))];
   const dl=document.getElementById('bankCats');if(dl)dl.innerHTML=cats.map(c=>`<option value="${esc(c)}">`).join('');
-  const entradas=rows.filter(b=>b.amount>0).reduce((s,b)=>s+(+b.amount),0);
-  const saidas=rows.filter(b=>b.amount<0).reduce((s,b)=>s+(+b.amount),0);
+  const isTransf=b=>b.category==='Transferência interna';
+  const entradas=rows.filter(b=>b.amount>0&&!isTransf(b)).reduce((s,b)=>s+(+b.amount),0);
+  const saidas=rows.filter(b=>b.amount<0&&!isTransf(b)).reduce((s,b)=>s+(+b.amount),0);
+  const transf=rows.filter(isTransf).reduce((s,b)=>s+Math.abs(+b.amount),0);
   const conc=rows.filter(b=>b.reconciled).length;
   const kp=document.getElementById('bankKpis');
-  if(kp)kp.innerHTML=kpi('Entradas',brl(entradas))+kpi('Saídas',brl(Math.abs(saidas)))+kpi('Saldo unificado',brl(entradas+saidas),'todas as contas')+kpi('Conciliados',conc+' / '+rows.length,'lançamentos');
+  if(kp)kp.innerHTML=kpi('Entradas (receitas)',brl(entradas))+kpi('Saídas (despesas)',brl(Math.abs(saidas)))+kpi('Resultado',brl(entradas+saidas),'entradas − saídas')+kpi('Transf. internas',brl(transf),'não contam');
   // saldo por conta
   const bal=document.getElementById('bankBalances');
   if(bal){const accs={};rows.forEach(b=>{accs[b.account||'—']=(accs[b.account||'—']||0)+(+b.amount);});
@@ -1307,19 +1325,19 @@ async function parseRede(file){
   showFech('✓ Rede/Itaú: '+list.length+' grupos importados — bruto total '+brl(list.reduce((s,a)=>s+a.gross,0)));
 }
 async function addSicoobCapture(){
-  const per=document.getElementById('scPeriod').value.trim();
-  const deb=brnum(val('scDeb')),cred=brnum(val('scCred'));
-  if(!deb&&!cred)return showFech('Informe ao menos débito ou crédito do Sicoob.',false);
-  // usa o período dos arquivos já importados, se houver
   const ref=[...fechMach,...fechPdv].filter(x=>x.unit_id===curUnit).sort((a,b)=>b.period_start<a.period_start?-1:1)[0];
-  const ps=ref?ref.period_start:new Date().toISOString().slice(0,10), pe=ref?ref.period_end:ps;
-  await sb.from('fech_mach').delete().eq('unit_id',curUnit).eq('acquirer','Sicoob').eq('period_start',ps).eq('period_end',pe);
+  if(!ref)return showFech('Suba primeiro os arquivos do período (Yooga/Rede/Brendi).',false);
+  const ps=ref.period_start,pe=ref.period_end;
   const ins=[];
-  if(deb)ins.push({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Sicoob',method:'debito',brand:'—',gross:deb,net:deb,qty:0,origin:'manual'});
-  if(cred)ins.push({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Sicoob',method:'credito',brand:'—',gross:cred,net:cred,qty:0,origin:'manual'});
-  await sb.from('fech_mach').insert(ins);
-  document.getElementById('scDeb').value='';document.getElementById('scCred').value='';
-  await loadAll();renderFechamento();showFech('✓ Captura do Sicoob salva ('+ps+' a '+pe+').');
+  [...document.querySelectorAll('#sicoobFields input')].forEach(inp=>{const g=brnum(inp.value);if(!g)return;
+    const m=inp.dataset.m,b=inp.dataset.b;const net=estNet('Sicoob',m,g,b);
+    ins.push({unit_id:curUnit,period_start:ps,period_end:pe,acquirer:'Sicoob',method:m,brand:b,gross:g,net:Math.round(net*100)/100,qty:0,origin:'manual'});});
+  if(!ins.length)return showFech('Informe o bruto de ao menos uma bandeira do Sicoob.',false);
+  await sb.from('fech_mach').delete().eq('unit_id',curUnit).eq('acquirer','Sicoob').eq('period_start',ps).eq('period_end',pe);
+  const {error}=await sb.from('fech_mach').insert(ins);
+  if(error)return showFech('Erro ao salvar Sicoob: '+error.message,false);
+  const tot=ins.reduce((s,x)=>s+x.gross,0),liq=ins.reduce((s,x)=>s+x.net,0);
+  await loadAll();renderFechamento();showFech('✓ Sicoob por bandeira salvo ('+fmtBr(ps)+' a '+fmtBr(pe)+'): bruto '+brl(tot)+' · líquido '+brl(liq)+' · taxa '+brl(tot-liq)+'.');
 }
 function pullFromExtrato(){
   const ref=[...fechMach,...fechPdv].filter(x=>x.unit_id===curUnit).sort((a,b)=>b.period_start<a.period_start?-1:1)[0];
@@ -1473,6 +1491,7 @@ function renderFechamento(){
   }
   h+=fechImportsBlock();
   area.innerHTML=h;
+  renderSicoobEntry();
   const unitName=(units.find(u=>u.id===curUnit)||{}).name||'';
   window._fechSummary={unitName,period:fmtBr(sel)+' a '+fmtBr(pInfo.period_end),salaoTotal,salaoCartao,salaoPix,salaoDin,delivery,delivOnline,delivCartao,delivDin,machCartao,machCred,machDeb,cash,pixRec,brendiRec,totVendas,totRecebido,diffT};
 }
