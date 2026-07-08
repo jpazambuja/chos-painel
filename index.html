@@ -895,12 +895,15 @@ function renderFinance(){
   const fatMes=reports.filter(r=>r.unit_id===curUnit&&r.ref_month.slice(0,7)===mo).reduce((s,r)=>s+(+r.total_rev),0);
   // Recebido pelos extratos (entradas líquidas, exclui transferência interna) no mês
   const recRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category!=='Transferência interna'&&(b.tx_date||'').slice(0,7)===mo);
-  const recebidoMes=recRows.reduce((s,b)=>s+(+b.amount),0);
+  let recebidoMes=recRows.reduce((s,b)=>s+(+b.amount),0);
   const recMap={};recRows.forEach(b=>{const c=b.category||'Outros';recMap[c]=(recMap[c]||0)+(+b.amount);});
   // Pago pelos extratos (saídas reais, exclui transferência interna) no mês
   const pagRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)<0&&b.category!=='Transferência interna'&&(b.tx_date||'').slice(0,7)===mo);
-  const pagoExtrato=Math.abs(pagRows.reduce((s,b)=>s+(+b.amount),0));
+  let pagoExtrato=Math.abs(pagRows.reduce((s,b)=>s+(+b.amount),0));
   const pagMap={};pagRows.forEach(b=>{const c=b.category||'Outros';pagMap[c]=(pagMap[c]||0)+Math.abs(+b.amount);});
+  // Taxas das maquininhas (retidas na fonte) — bruto − líquido do fech_mach do mês. Reclassifica: cartão vira bruto (receita) + taxa vira despesa; caixa não muda.
+  const cardFeeMes=fechMach.filter(m=>(!m.unit_id||m.unit_id===curUnit)&&(m.period_start||'').slice(0,7)===mo).reduce((s,m)=>s+Math.max(0,(+m.gross)-((+m.net)||(+m.gross))),0);
+  if(cardFeeMes>0){recebidoMes+=cardFeeMes;recMap['Venda Cartão']=(recMap['Venda Cartão']||0)+cardFeeMes;pagoExtrato+=cardFeeMes;pagMap['Taxas de cartão']=(pagMap['Taxas de cartão']||0)+cardFeeMes;}
   const caixaMes=recebidoMes-pagoExtrato;
   const contasMes=pagarMes+dia;
   const kp=document.getElementById('finKpis');
@@ -943,14 +946,14 @@ function renderFinance(){
   h+=`<div class="sec-title">Recebido pelos extratos — ${fmtMonth(mo)} · total ${brl(recebidoMes)}</div>`;
   if(recList.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Origem</th><th class="r">Recebido (líq.)</th></tr></thead><tbody>';
     recList.forEach(([c,v])=>h+=`<tr><td>${esc(c)}</td><td class="r">${brl2(v)}</td></tr>`);
-    h+='</tbody></table></div><div class="hint">Soma das entradas dos extratos (cartão líquido, Pix, Brendi), já sem as transferências internas. Se algum valor parecer estranho, reclassifique na aba Banco.</div>';}
+    h+='</tbody></table></div><div class="hint">Entradas dos extratos, sem transferências internas. O <b>cartão está pelo BRUTO</b> (a taxa retida foi somada de volta e aparece como despesa "Taxas de cartão" no Pago). Se algum valor parecer estranho, reclassifique na aba Banco.</div>';}
   else h+='<div class="muted">Nenhuma entrada de extrato neste mês. Importe os extratos na aba Banco.</div>';
   // Pago pelos extratos — por categoria
   const pagList=Object.entries(pagMap).sort((a,b)=>b[1]-a[1]);
   h+=`<div class="sec-title">Pago pelos extratos — ${fmtMonth(mo)} · total ${brl(pagoExtrato)}</div>`;
   if(pagList.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Categoria de gasto</th><th class="r">Pago</th></tr></thead><tbody>';
     pagList.forEach(([c,v])=>h+=`<tr><td>${esc(c)}</td><td class="r">${brl2(v)}</td></tr>`);
-    h+='</tbody></table></div><div class="hint">Saídas reais da conta (sem transferências internas). Classifique os lançamentos na aba <b>Banco</b> para esta quebra ficar precisa — o que estiver em "Não classificado" cai em Outros.</div>';}
+    h+='</tbody></table></div><div class="hint">Saídas reais da conta + <b>Taxas de cartão</b> (retidas na fonte pelas maquininhas — não aparecem no extrato, entram aqui como despesa). Classifique os lançamentos na aba <b>Banco</b> para a quebra ficar precisa.</div>';}
   else h+='<div class="muted">Nenhuma saída de extrato neste mês.</div>';
   // Lançamentos
   const list=[...mrows].sort((a,b)=>((a.due_date||'zzz')<(b.due_date||'zzz')?-1:1));
@@ -1416,7 +1419,10 @@ function renderFechamento(){
   // Detalhe maquininhas
   h+='<div class="sec-title">Capturado por maquininha</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Adquirente</th><th>Modalidade</th><th class="r">Bruto</th><th class="r">Líquido</th></tr></thead><tbody>';
   ['Itaú','Sicoob'].forEach(acq=>{['credito','debito'].forEach(m=>{const rs=mach.filter(x=>x.acquirer===acq&&x.method===m);if(rs.length){const g=rs.reduce((s,x)=>s+(+x.gross),0),n=rs.reduce((s,x)=>s+(+x.net),0);h+=`<tr><td>${acq}</td><td class="muted">${m}</td><td class="r">${brl2(g)}</td><td class="r">${n?brl2(n):'—'}</td></tr>`;}});});
+  const machGross=mach.reduce((s,x)=>s+(+x.gross),0), machNetTot=mach.reduce((s,x)=>s+((+x.net)||(+x.gross)),0), cardFee=Math.max(0,machGross-machNetTot);
+  h+=`<tr class="tot"><td colspan="2"><b>Taxa retida (despesa)</b></td><td class="r">bruto ${brl2(machGross)}</td><td class="r"><b style="color:var(--red)">−${brl2(cardFee)}</b></td></tr>`;
   h+='</tbody></table></div>';
+  h+=`<div class="hint gold">💳 Taxas das maquininhas no período: <b>${brl(cardFee)}</b> (${machGross>0?(cardFee/machGross*100).toFixed(2):'0'}% do bruto). Foram retidas na fonte — o cartão caiu líquido no banco. Entram como <b>despesa "Taxas de cartão"</b> no Financeiro.${mach.some(x=>x.acquirer==='Sicoob'&&(+x.net===+x.gross))?' Obs.: a taxa do Sicoob ainda não está aplicada (lançamento manual sem líquido) — o custo real é um pouco maior.':''}</div>`;
   // M2: Conciliação por banco — maquininha (líquido) × cartão que caiu no extrato
   const bankRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Venda Cartão');
   // Janela de repasse D+1 com fim de semana caindo na segunda: liquidações das vendas [sel..period_end] caem em [próximo dia útil de sel .. próximo dia útil do fim].
