@@ -1030,7 +1030,7 @@ function parseItauExtrato(txt){
     if(/SALDO (EM CONTA|TOTAL|ANTERIOR)|RENDIMENTOS/i.test(c))return;
     const vals=[...c.matchAll(/(-?\d{1,3}(?:\.\d{3})*,\d{2})/g)].map(m=>m[1]);if(!vals.length)return;
     const raw=vals[vals.length-1];
-    const isDebit=raw.trim().startsWith('-')||/sispag|pagamento|pag\s|pag fornec|fornecedor|tarifa|iof|ted enviad|pix enviad|pix emitid|d[eé]bito autom|juros|cesta|manuten|boleto pago|saque/i.test(c);
+    const isDebit=raw.trim().startsWith('-')||(/sispag|pagamento pix|pix enviad|pix emit|ted enviad|pag fornec|d[eé]bito autom|tarifa|\biof\b|cesta|boleto pago|saque|conv\.dem/i.test(c)&&!/recebimento rede|pix qr code recebido|recebimento pix/i.test(c));
     const amount=Math.abs(brnum(raw))*(isDebit?-1:1);
     const desc=c.replace(/\s+/g,' ').replace(raw,'').trim().slice(0,120);
     out.push({tx_date:`${dm[3]}-${dm[2]}-${dm[1]}`,amount,description:desc});});
