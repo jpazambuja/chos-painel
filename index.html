@@ -902,7 +902,7 @@ function renderFinance(){
   let pagoExtrato=Math.abs(pagRows.reduce((s,b)=>s+(+b.amount),0));
   const pagMap={};pagRows.forEach(b=>{const c=b.category||'Outros';pagMap[c]=(pagMap[c]||0)+Math.abs(+b.amount);});
   // Taxas das maquininhas (retidas na fonte) — bruto − líquido do fech_mach do mês. Reclassifica: cartão vira bruto (receita) + taxa vira despesa; caixa não muda.
-  const cardFeeMes=fechMach.filter(m=>(!m.unit_id||m.unit_id===curUnit)&&(m.period_start||'').slice(0,7)===mo).reduce((s,m)=>s+Math.max(0,(+m.gross)-((+m.net)||(+m.gross))),0);
+  const cardFeeMes=fechMach.filter(m=>(!m.unit_id||m.unit_id===curUnit)&&(m.period_start||'').slice(0,7)===mo).reduce((s,m)=>s+Math.max(0,(+m.gross)-machNetValue(m)),0);
   if(cardFeeMes>0){recebidoMes+=cardFeeMes;recMap['Venda Cartão']=(recMap['Venda Cartão']||0)+cardFeeMes;pagoExtrato+=cardFeeMes;pagMap['Taxas de cartão']=(pagMap['Taxas de cartão']||0)+cardFeeMes;}
   const caixaMes=recebidoMes-pagoExtrato;
   const contasMes=pagarMes+dia;
@@ -1026,6 +1026,18 @@ function autoCat(desc,amount){const d=norm(desc);const isOut=(+amount)<0;
   if(/sipag|cr ant|cr cmp|cr cps|recebimento rede|cielo|getnet|stone|pagseguro|mercado pago|maquin/.test(d))return 'Venda Cartão';
   if(/pix/.test(d))return 'Venda Pix';
   return 'Não classificado';}
+// Estima o líquido de um cartão aplicando as taxas cadastradas (aba Taxas) — usado p/ Sicoob (manual, sem líquido)
+function estNet(acquirer,method,gross){gross=+gross||0;if(!gross)return gross;
+  const a=norm(acquirer),m=norm(method).slice(0,3);
+  const rs=(cardRates||[]).filter(r=>{const ra=norm(r.acquirer),rm=norm(r.method).slice(0,3);
+    if(rm!==m)return false;
+    return ra.includes(a)||a.includes(ra)||(a.includes('sicoob')&&(ra.includes('sicoob')||ra.includes('sipag')))||(a.includes('ita')&&(ra.includes('ita')||ra.includes('rede')));});
+  if(!rs.length)return gross;
+  const avgPct=rs.reduce((s,r)=>s+(+r.rate_pct||0)+(+r.antecip_pct||0),0)/rs.length;
+  const avgFix=rs.reduce((s,r)=>s+(+r.fixed_fee||0),0)/rs.length;
+  return Math.max(0,gross*(1-avgPct/100)-avgFix);}
+// Líquido efetivo de um lançamento de maquininha: usa o net real se existir, senão estima pelas taxas
+function machNetValue(x){const n=+x.net,g=+x.gross;if(n>0&&n<g)return n;return estNet(x.acquirer,x.method,g);}
 function showBankMsg(msg,ok){_finMsg(msg,ok);}
 function parseItauExtrato(txt){
   const chunks=txt.split(/(?=\d{2}\/\d{2}\/\d{4}\s)/);const out=[];
@@ -1418,16 +1430,16 @@ function renderFechamento(){
   </div>`;
   // Detalhe maquininhas
   h+='<div class="sec-title">Capturado por maquininha</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Adquirente</th><th>Modalidade</th><th class="r">Bruto</th><th class="r">Líquido</th></tr></thead><tbody>';
-  ['Itaú','Sicoob'].forEach(acq=>{['credito','debito'].forEach(m=>{const rs=mach.filter(x=>x.acquirer===acq&&x.method===m);if(rs.length){const g=rs.reduce((s,x)=>s+(+x.gross),0),n=rs.reduce((s,x)=>s+(+x.net),0);h+=`<tr><td>${acq}</td><td class="muted">${m}</td><td class="r">${brl2(g)}</td><td class="r">${n?brl2(n):'—'}</td></tr>`;}});});
-  const machGross=mach.reduce((s,x)=>s+(+x.gross),0), machNetTot=mach.reduce((s,x)=>s+((+x.net)||(+x.gross)),0), cardFee=Math.max(0,machGross-machNetTot);
+  ['Itaú','Sicoob'].forEach(acq=>{['credito','debito'].forEach(m=>{const rs=mach.filter(x=>x.acquirer===acq&&x.method===m);if(rs.length){const g=rs.reduce((s,x)=>s+(+x.gross),0),n=rs.reduce((s,x)=>s+machNetValue(x),0),est=rs.every(x=>!(+x.net>0&&+x.net<+x.gross));h+=`<tr><td>${acq}</td><td class="muted">${m}</td><td class="r">${brl2(g)}</td><td class="r">${brl2(n)}${est?' <span class="muted" style="font-size:10px">(est.)</span>':''}</td></tr>`;}});});
+  const machGross=mach.reduce((s,x)=>s+(+x.gross),0), machNetTot=mach.reduce((s,x)=>s+machNetValue(x),0), cardFee=Math.max(0,machGross-machNetTot);
   h+=`<tr class="tot"><td colspan="2"><b>Taxa retida (despesa)</b></td><td class="r">bruto ${brl2(machGross)}</td><td class="r"><b style="color:var(--red)">−${brl2(cardFee)}</b></td></tr>`;
   h+='</tbody></table></div>';
-  h+=`<div class="hint gold">💳 Taxas das maquininhas no período: <b>${brl(cardFee)}</b> (${machGross>0?(cardFee/machGross*100).toFixed(2):'0'}% do bruto). Foram retidas na fonte — o cartão caiu líquido no banco. Entram como <b>despesa "Taxas de cartão"</b> no Financeiro.${mach.some(x=>x.acquirer==='Sicoob'&&(+x.net===+x.gross))?' Obs.: a taxa do Sicoob ainda não está aplicada (lançamento manual sem líquido) — o custo real é um pouco maior.':''}</div>`;
+  h+=`<div class="hint gold">💳 Taxas das maquininhas no período: <b>${brl(cardFee)}</b> (${machGross>0?(cardFee/machGross*100).toFixed(2):'0'}% do bruto). Foram retidas na fonte — o cartão caiu líquido no banco. Entram como <b>despesa "Taxas de cartão"</b> no Financeiro.${mach.some(x=>x.acquirer==='Sicoob'&&!(+x.net>0&&+x.net<+x.gross))?' O líquido do Sicoob é <b>estimado</b> pelas taxas cadastradas (aba Taxas) — marcado com "(est.)".':''}</div>`;
   // M2: Conciliação por banco — maquininha (líquido) × cartão que caiu no extrato
   const bankRows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(+b.amount)>0&&b.category==='Venda Cartão');
   // Janela de repasse D+1 com fim de semana caindo na segunda: liquidações das vendas [sel..period_end] caem em [próximo dia útil de sel .. próximo dia útil do fim].
   const settleStart=nextBizDay(sel), settleEnd=nextBizDay(pInfo.period_end);
-  const machNet=acq=>mach.filter(x=>x.acquirer===acq).reduce((s,x)=>s+(+x.net||+x.gross),0);
+  const machNet=acq=>mach.filter(x=>x.acquirer===acq).reduce((s,x)=>s+machNetValue(x),0);
   const bankCard=acc=>bankRows.filter(b=>b.account===acc&&b.tx_date>=settleStart&&b.tx_date<=settleEnd).reduce((s,b)=>s+(+b.amount),0);
   let mrows2='';[['Itaú','Itaú (Rede)'],['Sicoob','Sicoob (SIPAG)']].forEach(([acc,lbl])=>{const mn=machNet(acc),bc=bankCard(acc);if(mn||bc){const d=bc-mn;mrows2+=`<tr><td>${lbl}</td><td class="r">${brl(mn)}</td><td class="r">${bc?brl(bc):'—'}</td><td class="r">${bc?('<span class="badge '+(Math.abs(d)<50?'b-good':'b-warn')+'">'+brl(d)+'</span>'):'<span class="muted">suba o extrato</span>'}</td></tr>`;}});
   if(mrows2){h+='<div class="sec-title">Conciliação por banco — maquininha (líq.) × caiu no extrato</div><div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Banco</th><th class="r">Maquininha (líq.)</th><th class="r">Caiu no extrato</th><th class="r">Diferença</th></tr></thead><tbody>'+mrows2+'</tbody></table></div><div class="hint">Rede cai no Itaú, SIPAG no Sicoob (D+1). A janela pega as liquidações de '+fmtBr(settleStart)+' a '+fmtBr(settleEnd)+' — fim de semana cai na segunda. Obs.: o líquido do Sicoob é aproximado enquanto for lançado manual (sem a taxa aplicada).</div>';}
