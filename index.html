@@ -208,6 +208,7 @@ tr:last-child td{border-bottom:none}
     <h2>Financeiro</h2>
     <div class="tabs" style="margin:8px 0 4px"><button class="finsub" data-f="contas" onclick="showFin('contas')">Contas</button><button class="finsub" data-f="banco" onclick="showFin('banco')">Banco</button><button class="finsub" data-f="taxas" onclick="showFin('taxas')">Taxas de cartão</button><button class="finsub" data-f="fechamento" onclick="showFin('fechamento')">Fechamento</button></div>
     <div class="sub">Banco & Conciliação — suba o extrato (.ofx/.csv), classifique entradas/saídas e confira se as vendas caíram.</div>
+    <div class="unitpick" style="margin-top:10px"><span class="muted">Mês:</span><input id="bankMonth" type="month" style="width:auto" onchange="renderBanco()"><button class="sm" onclick="document.getElementById('bankMonth').value='';renderBanco()">Todos os meses</button></div>
     <div class="grid g4" id="bankKpis" style="margin:14px 0"></div>
     <div id="bankBalances"></div>
     <div id="bankDrop" class="drop"><b>Arraste o extrato aqui</b> ou clique — o sistema identifica sozinho o banco (Itaú/Sicoob PDF, OFX ou CSV)<input type="file" id="bankFile" accept=".ofx,.csv,.txt,.pdf" style="display:none"></div>
@@ -1155,7 +1156,10 @@ let bankFilter='todos';
 function setBankFilter(v){bankFilter=v;renderBanco();}
 function renderBanco(){
   renderRates();
-  const rows=bank.filter(b=>!b.unit_id||b.unit_id===curUnit);
+  const mSel=document.getElementById('bankMonth');
+  if(mSel&&!mSel.value&&!mSel.dataset.init){mSel.value=new Date().toISOString().slice(0,7);mSel.dataset.init='1';}
+  const bmo=mSel?mSel.value:'';
+  const rows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(!bmo||(b.tx_date||'').slice(0,7)===bmo));
   const cats=[...new Set(rows.map(b=>b.category).filter(Boolean))];
   const dl=document.getElementById('bankCats');if(dl)dl.innerHTML=cats.map(c=>`<option value="${esc(c)}">`).join('');
   const isTransf=b=>b.category==='Transferência interna';
