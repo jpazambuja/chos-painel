@@ -975,14 +975,32 @@ function bankParseDate(s){s=(s||'').trim();
   let m=s.match(/(\d{2})\/(\d{2})\/(\d{4})/); if(m)return `${m[3]}-${m[2]}-${m[1]}`;    // dd/mm/yyyy
   m=s.match(/(\d{4})-(\d{2})-(\d{2})/); if(m)return `${m[1]}-${m[2]}-${m[3]}`;          // yyyy-mm-dd
   return null;}
+// Lê texto respeitando o encoding: OFX/CSV brasileiro costuma vir em ISO-8859-1/Windows-1252
+async function readTextSmart(file){
+  const buf=await file.arrayBuffer();
+  let t=new TextDecoder('utf-8').decode(buf);
+  if(/�/.test(t)){try{t=new TextDecoder('windows-1252').decode(buf);}catch(e){}}
+  return t;
+}
+// Identifica o banco pelo OFX (BANKID 341=Itaú, 756=Sicoob) — sem isso a conciliação por banco não acha a conta
+function ofxBank(txt){const t=(txt||'').toLowerCase();
+  if(/<bankid>\s*0*756\b/.test(t)||/sicoob|sisbr|bancoob/.test(t))return 'Sicoob';
+  if(/<bankid>\s*0*341\b/.test(t)||/ita[uú]|unibanco/.test(t))return 'Itaú';
+  return 'Banco';}
 function parseOFX(txt){
   const out=[]; const blocks=txt.split(/<STMTTRN>/i).slice(1);
   blocks.forEach(b=>{
-    const dt=(b.match(/<DTPOSTED>([^<\r\n]+)/i)||[])[1];
-    const amt=(b.match(/<TRNAMT>([^<\r\n]+)/i)||[])[1];
-    const memo=(b.match(/<MEMO>([^<\r\n]+)/i)||[])[1]||(b.match(/<NAME>([^<\r\n]+)/i)||[])[1]||'';
-    const d=bankParseDate(dt); const v=parseFloat((amt||'').replace(',','.'));
-    if(d&&!isNaN(v))out.push({tx_date:d,amount:v,description:memo.trim()});
+    const g=re=>{const m=b.match(re);return m?m[1].trim():'';};
+    const dt=g(/<DTPOSTED>([^<\r\n]+)/i);
+    const amt=g(/<TRNAMT>([^<\r\n]+)/i);
+    const type=g(/<TRNTYPE>([^<\r\n]+)/i).toUpperCase();
+    const name=g(/<NAME>([^<\r\n]+)/i), memo=g(/<MEMO>([^<\r\n]+)/i);
+    const desc=([name,memo].filter(Boolean).join(' ')||type).slice(0,120);
+    const d=bankParseDate(dt);
+    let v=parseFloat(amt.replace(/\s/g,'').replace(/\.(?=\d{3}\b)/g,'').replace(',','.'));
+    // trava: se o banco mandar DEBIT com valor positivo, força negativo
+    if(!isNaN(v)&&v>0&&/DEBIT|PAYMENT|FEE|CHECK|XFER/.test(type)&&!/CREDIT|DEP/.test(type))v=-Math.abs(v);
+    if(d&&!isNaN(v)&&v!==0)out.push({tx_date:d,amount:v,description:desc});
   });
   return out;
 }
@@ -1097,16 +1115,17 @@ async function detectAndRoute(file){
   try{
     if(nm.endsWith('.pdf'))text=await pdfText(file);
     else if(nm.endsWith('.xlsx')||nm.endsWith('.xlsm')){const buf=await file.arrayBuffer();const wb=XLSX.read(buf,{type:'array'});text=wb.SheetNames.join(' ')+' '+XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]).slice(0,3000);}
-    else text=await file.text();
+    else text=await readTextSmart(file);
   }catch(e){return showBankMsg('Não consegui abrir o arquivo: '+e.message,false);}
   const t=text.toLowerCase();
   try{
     if(/data da venda/.test(t)&&/(confer[êe]ncia|modalidade)/.test(t)){await parseRede(file);await loadAll();renderFechamento();return;}
     if(/relat[óo]rio operacional/.test(t)&&/(brendi|tipos de pagamento)/.test(t)){await parseBrendi(file,text);await loadAll();renderFechamento();return;}
     if(/venda por forma de pagamento/.test(t)){await parseYooga(file,text);await loadAll();renderFechamento();return;}
+    // OFX ANTES do PDF: um OFX do Sicoob contém a palavra "sicoob" e cairia no leitor errado
+    if(/<ofx|<stmttrn/.test(t)){const acc=ofxBank(text);const txs=parseOFX(text);if(!txs.length)return showBankMsg('OFX lido, mas não encontrei lançamentos (<STMTTRN>).',false);const n=await saveBankTx(txs,acc);await loadAll();renderBanco();renderFechamento();return showBankMsg('✓ Extrato OFX ('+acc+'): '+n+' lançamentos importados (duplicados ignorados).');}
     if(/sicoob|sisbr/.test(t)){const n=await saveBankTx(parseSicoobExtrato(text),'Sicoob');await loadAll();renderBanco();renderFechamento();return showBankMsg('✓ Extrato Sicoob: '+n+' lançamentos importados (duplicados ignorados).');}
     if(/recebimento rede/.test(t)||(/ita[uú]/.test(t)&&/lan[çc]amentos do per/.test(t))){const n=await saveBankTx(parseItauExtrato(text),'Itaú');await loadAll();renderBanco();renderFechamento();return showBankMsg('✓ Extrato Itaú: '+n+' lançamentos importados (duplicados ignorados).');}
-    if(/<ofx/.test(t)){const txs=parseOFX(text);const n=await saveBankTx(txs,'Banco');await loadAll();renderBanco();return showBankMsg('✓ Extrato OFX: '+n+' lançamentos.');}
     if(nm.endsWith('.csv')){const txs=parseBankCSV(text);if(!txs.length)return showBankMsg('CSV lido, mas não reconheci as colunas (data/valor). Tente exportar em OFX.',false);const n=await saveBankTx(txs,'Banco');await loadAll();renderBanco();return showBankMsg('✓ Extrato CSV: '+n+' lançamentos.');}
     return showBankMsg('Não reconheci este arquivo. Aceito: extrato Sicoob/Itaú (PDF ou OFX), CSV bancário, maquininha Rede (xlsx), Brendi (PDF) e Yooga (xls).',false);
   }catch(e){return showBankMsg('Erro ao processar: '+e.message,false);}
@@ -1226,11 +1245,12 @@ async function handleFechFile(file){
     else if(type==='rede')await parseRede(file);
     else if(type==='extrato'){
       const nm=file.name.toLowerCase();
-      const text=nm.endsWith('.pdf')?await pdfText(file):await file.text();
+      const text=nm.endsWith('.pdf')?await pdfText(file):await readTextSmart(file);
       const t=text.toLowerCase();let n=0,acc='Banco';
-      if(/sicoob|sisbr/.test(t)){acc='Sicoob';n=await saveBankTx(parseSicoobExtrato(text),'Sicoob');}
+      // OFX primeiro: um OFX do Sicoob contém "sicoob" e cairia no leitor de PDF
+      if(/<ofx|<stmttrn/.test(t)){acc=ofxBank(text);const txs=parseOFX(text);if(!txs.length)return showFech('OFX lido, mas não encontrei lançamentos (<STMTTRN>).',false);n=await saveBankTx(txs,acc);}
+      else if(/sicoob|sisbr/.test(t)){acc='Sicoob';n=await saveBankTx(parseSicoobExtrato(text),'Sicoob');}
       else if(/recebimento rede/.test(t)||/ita[uú]/.test(t)){acc='Itaú';n=await saveBankTx(parseItauExtrato(text),'Itaú');}
-      else if(/<ofx/.test(t)){n=await saveBankTx(parseOFX(text),'Banco');}
       else if(nm.endsWith('.csv')){n=await saveBankTx(parseBankCSV(text),'Banco');}
       else return showFech('Não reconheci o extrato. Use o PDF do Itaú/Sicoob, ou OFX/CSV.',false);
       showFech('✓ Extrato ('+acc+'): '+n+' lançamentos importados (duplicados ignorados).');
