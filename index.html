@@ -546,22 +546,61 @@ async function addTask(){
 }
 const NEXT={afazer:'fazendo',fazendo:'feito',feito:'afazer'};
 const LBL={afazer:'A fazer',fazendo:'Fazendo',feito:'Feito'};
-async function cycleTask(id,st){await sb.from('tasks').update({status:NEXT[st],updated_at:new Date().toISOString()}).eq('id',id);await loadAll();renderTasks();renderMetas();renderOverview();}
+async function cycleTask(id,st){
+  const novo=NEXT[st];
+  await sb.from('tasks').update({status:novo,updated_at:new Date().toISOString()}).eq('id',id);
+  // se é subtarefa: sincroniza a frente principal (todas feitas = feito; alguma aberta = fazendo)
+  const t=tasks.find(x=>x.id===id);
+  if(t&&t.parent_id){
+    const irmas=tasks.filter(x=>x.parent_id===t.parent_id).map(x=>x.id===id?{...x,status:novo}:x);
+    const todasFeitas=irmas.length>0&&irmas.every(x=>x.status==='feito');
+    const pai=tasks.find(x=>x.id===t.parent_id);
+    const alvo=todasFeitas?'feito':(irmas.some(x=>x.status!=='afazer')?'fazendo':'afazer');
+    if(pai&&pai.status!==alvo)await sb.from('tasks').update({status:alvo,updated_at:new Date().toISOString()}).eq('id',pai.id);
+  }
+  await loadAll();renderTasks();renderMetas();renderOverview();
+}
 async function delTask(id){if(!confirm('Excluir tarefa?'))return;await sb.from('tasks').delete().eq('id',id);await loadAll();renderTasks();renderMetas();renderOverview();}
 function goalName(id){const g=goals.find(x=>x.id===id);return g?g.title:null;}
+async function addSubtask(pid){
+  const t=tasks.find(x=>x.id===pid);if(!t)return;
+  const v=prompt('Nova subtarefa de: '+t.title);if(!v||!v.trim())return;
+  const sort=(tasks.filter(x=>x.parent_id===pid).reduce((m,x)=>Math.max(m,x.sort||0),0))+1;
+  await sb.from('tasks').insert({title:v.trim(),bloco:t.bloco,status:'afazer',sort,unit_id:t.unit_id,goal_id:t.goal_id,parent_id:pid,created_by:(await sb.auth.getUser()).data.user.id});
+  await loadAll();renderTasks();renderMetas();renderOverview();
+}
 function renderTasks(){
   const sel=document.getElementById('ngoal');
   if(sel)sel.innerHTML='<option value="">— sem meta —</option>'+goals.map(g=>`<option value="${g.id}">${esc(g.title)}</option>`).join('');
+  const mine=tasks.filter(t=>!t.unit_id||t.unit_id===curUnit);
   const rt=document.getElementById('repTask');
-  if(rt)rt.innerHTML='<option value="">— nenhuma —</option>'+tasks.filter(t=>t.status!=='feito').map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('');
+  if(rt)rt.innerHTML='<option value="">— nenhuma —</option>'+mine.filter(t=>t.status!=='feito'&&!t.parent_id).map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('');
   const el=document.getElementById('taskList');
+  const hoje=new Date().toISOString().slice(0,10);
+  const parents=mine.filter(t=>!t.parent_id);
   const order=['Semana','Bloco 1 — Ganhos rápidos','Bloco 2 — Estruturais','Bloco 3 — Habilitadores'];
-  const sorted=[...tasks].sort((a,b)=>(order.indexOf(a.bloco)-order.indexOf(b.bloco))||(a.sort-b.sort));
-  el.innerHTML=sorted.map(t=>{const gn=goalName(t.goal_id);
-    return `<div class="taskrow">
-    <span class="st st-${t.status}" onclick="cycleTask('${t.id}','${t.status}')">${LBL[t.status]}</span>
-    <span class="tt">${esc(t.title)}<div class="bl">${esc(t.bloco)}${gn?' · 🎯 '+esc(gn):''}</div></span>
-    <span class="del" onclick="delTask('${t.id}')">×</span></div>`;}).join('')||'<div class="muted">Sem tarefas ainda.</div>';
+  const ob=b=>{const i=order.indexOf(b);return i<0?99:i;};
+  const sorted=[...parents].sort((a,b)=>(ob(a.bloco)-ob(b.bloco))||((a.sort||0)-(b.sort||0)));
+  el.innerHTML=sorted.map(t=>{
+    const gn=goalName(t.goal_id);
+    const sub=mine.filter(x=>x.parent_id===t.id).sort((a,b)=>(a.sort||0)-(b.sort||0));
+    const done=sub.filter(s=>s.status==='feito').length;
+    const pct=sub.length?Math.round(done/sub.length*100):null;
+    const late=t.due_date&&t.status!=='feito'&&t.due_date<hoje;
+    let h=`<div class="taskrow">
+      <span class="st st-${t.status}" onclick="cycleTask('${t.id}','${t.status}')">${LBL[t.status]}</span>
+      <span class="tt"><b>${esc(t.title)}</b>${sub.length?` <span class="muted" style="font-size:12px">${done}/${sub.length}</span>`:''}
+        <div class="bl">${esc(t.bloco)}${gn?' · 🎯 '+esc(gn):''}${t.due_date?' · 📅 '+fmtBr(t.due_date):''}${late?' <b style="color:#B4472F">ATRASADO</b>':''}</div>
+        ${pct!==null?`<div style="background:#E7E1D6;border-radius:6px;height:6px;margin-top:6px;max-width:300px"><div style="width:${pct}%;height:6px;border-radius:6px;background:${pct===100?'#3F7D5C':'#A98A45'}"></div></div>`:''}
+      </span>
+      <button class="sm" onclick="addSubtask('${t.id}')" title="nova subtarefa">＋ sub</button>
+      <span class="del" onclick="delTask('${t.id}')">×</span></div>`;
+    sub.forEach(s=>{h+=`<div class="taskrow" style="margin-left:24px;border-left:3px solid #DDD3C2;background:#FCFBF8">
+      <span class="st st-${s.status}" onclick="cycleTask('${s.id}','${s.status}')">${LBL[s.status]}</span>
+      <span class="tt" style="font-size:13px">${esc(s.title)}</span>
+      <span class="del" onclick="delTask('${s.id}')">×</span></div>`;});
+    return h;
+  }).join('')||'<div class="muted">Sem tarefas ainda.</div>';
 }
 
 /* ===================== METAS ===================== */
