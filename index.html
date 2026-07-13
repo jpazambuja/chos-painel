@@ -128,8 +128,7 @@ tr:last-child td{border-bottom:none}
   <div class="unitpick"><span class="muted">Unidade:</span><select id="unitSel" onchange="onUnitChange()"></select></div>
   <div class="tabs" id="adminTabs">
     <button data-t="overview" class="active">Visão Geral</button>
-    <button data-t="tarefas">Tarefas</button>
-    <button data-t="metas">Metas</button>
+    <button data-t="metas">Metas & Tarefas</button>
     <button data-t="fichas">Fichas & CMV</button>
     <button data-t="relatorios">Relatórios</button>
     <button data-t="financeiro">Financeiro</button>
@@ -146,20 +145,11 @@ tr:last-child td{border-bottom:none}
     <div class="card hint gold">Meça com os relatórios: <b>chopp a R$14</b> segurou o volume? · <b>Estrella/Cerpa</b> premium vingaram? · <b>taxa de anexação do combo</b> (meta ≥ 20%) · <b>diaristas a pagar</b> na segunda (aba Ponto).</div>
   </section>
 
-  <section id="tarefas" class="pane">
-    <h2>Tarefas</h2><div class="sub">Plano de ação — clique no status para alternar. Salva na nuvem, todos os gestores veem.</div>
-    <div class="addbar"><input id="ntask" placeholder="Nova tarefa..."><select id="nbloco" style="width:auto">
-      <option>Semana</option><option>Bloco 1 — Ganhos rápidos</option><option>Bloco 2 — Estruturais</option><option>Bloco 3 — Habilitadores</option></select>
-      <select id="ngoal" style="width:auto"></select>
-      <button class="primary" onclick="addTask()">Adicionar</button></div>
-    <div id="taskList" class="tasklist"></div>
-  </section>
-
   <section id="metas" class="pane">
-    <h2>Metas</h2><div class="sub">Objetivos do CH Food Park</div>
+    <h2>Metas & Tarefas</h2><div class="sub">Toda tarefa vive dentro de uma meta. Clique numa meta para abrir suas tarefas e subtarefas.</div>
     <div id="metaList" class="tasklist" style="margin-top:12px"></div>
     <div class="addbar"><input id="nmeta" placeholder="Nova meta..."><input id="nmetav" placeholder="valor/alvo" style="max-width:160px">
-      <button class="primary" onclick="addMeta()">Adicionar</button></div>
+      <button class="primary" onclick="addMeta()">＋ Meta</button></div>
   </section>
 
   <section id="fichas" class="pane">
@@ -539,13 +529,13 @@ function renderOverview(){
 function kpi(l,v,n){return `<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="note">${n||''}</div></div>`;}
 
 /* ===================== TAREFAS ===================== */
-async function addTask(){
-  const v=document.getElementById('ntask').value.trim();if(!v)return;
-  const bloco=document.getElementById('nbloco').value;
-  const goal_id=document.getElementById('ngoal').value||null;
+// Nova tarefa dentro de uma meta (goal_id=null → tarefa avulsa, aparece no card "Sem meta")
+async function addTaskToGoal(gid){
+  const v=prompt(gid?'Nova tarefa desta meta:':'Nova tarefa (sem meta):');if(!v||!v.trim())return;
   const sort=(tasks.reduce((m,t)=>Math.max(m,t.sort||0),0))+1;
-  await sb.from('tasks').insert({title:v,bloco,status:'afazer',sort,unit_id:curUnit,goal_id,created_by:(await sb.auth.getUser()).data.user.id});
-  document.getElementById('ntask').value='';await loadAll();renderTasks();renderMetas();renderOverview();
+  await sb.from('tasks').insert({title:v.trim(),bloco:'Semana',status:'afazer',sort,unit_id:curUnit,goal_id:gid||null,created_by:(await sb.auth.getUser()).data.user.id});
+  await loadAll();renderTasks();renderMetas();renderOverview();
+  if(_openGoal)renderGoalModal();
 }
 const NEXT={afazer:'fazendo',fazendo:'feito',feito:'afazer'};
 const LBL={afazer:'A fazer',fazendo:'Fazendo',feito:'Feito'};
@@ -574,37 +564,10 @@ async function addSubtask(pid){
   if(typeof _openGoal!=='undefined'&&_openGoal)renderGoalModal();
 }
 function renderTasks(){
-  const sel=document.getElementById('ngoal');
-  if(sel)sel.innerHTML='<option value="">— sem meta —</option>'+goals.map(g=>`<option value="${g.id}">${esc(g.title)}</option>`).join('');
+  // a aba Tarefas foi absorvida por Metas — mantém só o selector de "atrelar relatório à tarefa"
   const mine=tasks.filter(t=>!t.unit_id||t.unit_id===curUnit);
   const rt=document.getElementById('repTask');
   if(rt)rt.innerHTML='<option value="">— nenhuma —</option>'+mine.filter(t=>t.status!=='feito'&&!t.parent_id).map(t=>`<option value="${t.id}">${esc(t.title)}</option>`).join('');
-  const el=document.getElementById('taskList');
-  const hoje=new Date().toISOString().slice(0,10);
-  const parents=mine.filter(t=>!t.parent_id);
-  const order=['Semana','Bloco 1 — Ganhos rápidos','Bloco 2 — Estruturais','Bloco 3 — Habilitadores'];
-  const ob=b=>{const i=order.indexOf(b);return i<0?99:i;};
-  const sorted=[...parents].sort((a,b)=>(ob(a.bloco)-ob(b.bloco))||((a.sort||0)-(b.sort||0)));
-  el.innerHTML=sorted.map(t=>{
-    const gn=goalName(t.goal_id);
-    const sub=mine.filter(x=>x.parent_id===t.id).sort((a,b)=>(a.sort||0)-(b.sort||0));
-    const done=sub.filter(s=>s.status==='feito').length;
-    const pct=sub.length?Math.round(done/sub.length*100):null;
-    const late=t.due_date&&t.status!=='feito'&&t.due_date<hoje;
-    let h=`<div class="taskrow">
-      <span class="st st-${t.status}" onclick="cycleTask('${t.id}','${t.status}')">${LBL[t.status]}</span>
-      <span class="tt"><b>${esc(t.title)}</b>${sub.length?` <span class="muted" style="font-size:12px">${done}/${sub.length}</span>`:''}
-        <div class="bl">${esc(t.bloco)}${gn?' · 🎯 '+esc(gn):''}${t.due_date?' · 📅 '+fmtBr(t.due_date):''}${late?' <b style="color:#B4472F">ATRASADO</b>':''}</div>
-        ${pct!==null?`<div style="background:#E7E1D6;border-radius:6px;height:6px;margin-top:6px;max-width:300px"><div style="width:${pct}%;height:6px;border-radius:6px;background:${pct===100?'#3F7D5C':'#A98A45'}"></div></div>`:''}
-      </span>
-      <button class="sm" onclick="addSubtask('${t.id}')" title="nova subtarefa">＋ sub</button>
-      <span class="del" onclick="delTask('${t.id}')">×</span></div>`;
-    sub.forEach(s=>{h+=`<div class="taskrow" style="margin-left:24px;border-left:3px solid #DDD3C2;background:#FCFBF8">
-      <span class="st st-${s.status}" onclick="cycleTask('${s.id}','${s.status}')">${LBL[s.status]}</span>
-      <span class="tt" style="font-size:13px">${esc(s.title)}</span>
-      <span class="del" onclick="delTask('${s.id}')">×</span></div>`;});
-    return h;
-  }).join('')||'<div class="muted">Sem tarefas ainda.</div>';
 }
 
 /* ===================== METAS ===================== */
@@ -630,30 +593,46 @@ function renderMetas(){
         <span style="display:flex;gap:8px;align-items:center">${g.value&&g.value!=='—'?`<span class="pill">${esc(g.value)}</span>`:''}
         <span class="badge ${p.pct>=100?'b-good':'b-warn'}">${p.pct}%</span>
         <span class="del" onclick="event.stopPropagation();delMeta('${g.id}')">×</span></span></div>
-      ${p.total?bar+`<div class="bl muted" style="margin-top:6px">${p.done} de ${p.total} concluídas · <b style="color:var(--gold)">clique para abrir</b></div>`:'<div class="bl muted" style="margin-top:6px">Nenhuma tarefa vinculada. Na aba Tarefas, escolha esta meta ao criar a tarefa.</div>'}
+      ${p.total?bar+`<div class="bl muted" style="margin-top:6px">${p.done} de ${p.total} concluídas · <b style="color:var(--gold)">clique para abrir</b></div>`:'<div class="bl muted" style="margin-top:6px">Nenhuma tarefa ainda · <b style="color:var(--gold)">clique para adicionar</b></div>'}
     </div>`;}).join('')||'<div class="muted">Sem metas ainda.</div>';
+  // rede de segurança: tarefas sem meta não podem sumir
+  const orfas=tasks.filter(t=>(!t.unit_id||t.unit_id===curUnit)&&!t.goal_id&&!t.parent_id);
+  if(orfas.length)el.innerHTML+=`<div class="card" style="margin-bottom:10px;padding:14px;cursor:pointer;border-color:var(--gold)" onclick="openGoal('__orfas__')">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <b style="color:var(--gold)">⚠️ Tarefas sem meta</b><span class="badge b-warn">${orfas.length}</span></div>
+    <div class="bl muted" style="margin-top:6px">Toda tarefa deveria pertencer a uma meta. Clique para ver e organizar.</div></div>`;
 }
 /* ---- Pop-up da meta: tarefas + subtarefas ---- */
 let _openGoal=null;
+async function moveTaskToGoal(tid,gid){
+  if(!gid)return;
+  await sb.from('tasks').update({goal_id:gid}).eq('id',tid);
+  await sb.from('tasks').update({goal_id:gid}).eq('parent_id',tid); // leva as subtarefas junto
+  await loadAll();renderMetas();renderTasks();renderOverview();
+  if(_openGoal)renderGoalModal();
+}
 function closeGoal(){_openGoal=null;document.getElementById('goalOverlay').classList.remove('show');}
 function openGoal(gid){_openGoal=gid;document.getElementById('goalOverlay').classList.add('show');renderGoalModal();}
 function renderGoalModal(){
   if(!_openGoal)return;
-  const g=goals.find(x=>x.id===_openGoal);
   const box=document.getElementById('goalModal');
-  if(!g){closeGoal();return;}
   const hoje=new Date().toISOString().slice(0,10);
-  const all=tasks.filter(t=>t.goal_id===g.id);
+  const orfa=_openGoal==='__orfas__';
+  const g=orfa?{id:null,title:'⚠️ Tarefas sem meta',value:'organize: crie a meta ou mova para uma existente'}:goals.find(x=>x.id===_openGoal);
+  if(!g){closeGoal();return;}
+  const all=orfa?tasks.filter(t=>(!t.unit_id||t.unit_id===curUnit)&&!t.goal_id)
+                : tasks.filter(t=>t.goal_id===g.id);
   const parents=all.filter(t=>!t.parent_id).sort((a,b)=>(a.sort||0)-(b.sort||0));
-  const p=goalProgress(g.id);
+  const p=orfa?{done:all.filter(t=>t.status==='feito').length,total:all.length,pct:all.length?Math.round(all.filter(t=>t.status==='feito').length/all.length*100):0}:goalProgress(g.id);
   let h=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
       <div><div style="font-size:19px;font-weight:700;color:var(--verde,#14352a)">${esc(g.title)}</div>
       ${g.value&&g.value!=='—'?`<div class="muted" style="font-size:13px;margin-top:2px">${esc(g.value)}</div>`:''}</div>
       <button class="sm" onclick="closeGoal()">✕ fechar</button></div>
     <div style="background:var(--palhal);border-radius:20px;height:10px;overflow:hidden;margin:12px 0 4px">
       <div style="width:${p.pct}%;height:100%;background:${p.pct>=100?'var(--greenl)':'var(--gold)'}"></div></div>
-    <div class="bl muted" style="margin-bottom:12px">${p.done} de ${p.total} concluídas · <b>${p.pct}%</b></div>`;
-  if(!parents.length)h+='<div class="muted">Nenhuma tarefa vinculada a esta meta.</div>';
+    <div class="bl muted" style="margin-bottom:10px">${p.done} de ${p.total} concluídas · <b>${p.pct}%</b></div>
+    <button class="primary sm" style="margin-bottom:12px" onclick="addTaskToGoal(${orfa?'null':`'${g.id}'`})">＋ Nova tarefa</button>`;
+  if(!parents.length)h+='<div class="muted">Nenhuma tarefa aqui ainda.</div>';
   parents.forEach(t=>{
     const sub=all.filter(x=>x.parent_id===t.id).sort((a,b)=>(a.sort||0)-(b.sort||0));
     const done=sub.filter(s=>s.status==='feito').length;
@@ -664,12 +643,16 @@ function renderGoalModal(){
         <span class="st st-${t.status}" style="cursor:pointer" onclick="cycleTask('${t.id}','${t.status}')">${LBL[t.status]}</span>
         <b style="flex:1">${esc(t.title)}</b>
         ${sub.length?`<span class="muted" style="font-size:12px">${done}/${sub.length}</span>`:''}
+        <button class="sm" onclick="addSubtask('${t.id}')" title="nova subtarefa">＋ sub</button>
+        <span class="del" onclick="delTask('${t.id}')">×</span>
       </div>
       <div class="bl muted" style="margin-top:3px">${esc(t.bloco||'')}${t.due_date?' · 📅 '+fmtBr(t.due_date):''}${late?' <b style="color:#B4472F">ATRASADO</b>':''}</div>
+      ${orfa?`<div style="margin-top:6px"><select style="width:auto;padding:5px;font-size:12px" onchange="moveTaskToGoal('${t.id}',this.value)"><option value="">— mover para uma meta —</option>${goals.filter(x=>!x.unit_id||x.unit_id===curUnit).map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></div>`:''}
       ${pct!==null?`<div style="background:#E7E1D6;border-radius:6px;height:5px;margin-top:6px"><div style="width:${pct}%;height:5px;border-radius:6px;background:${pct===100?'#3F7D5C':'#A98A45'}"></div></div>`:''}`;
     sub.forEach(s=>{h+=`<div style="display:flex;align-items:center;gap:8px;margin:6px 0 0 14px;padding-left:10px;border-left:3px solid #E7E1D6">
         <span class="st st-${s.status}" style="cursor:pointer" onclick="cycleTask('${s.id}','${s.status}')">${LBL[s.status]}</span>
-        <span style="font-size:13px;flex:1">${esc(s.title)}</span></div>`;});
+        <span style="font-size:13px;flex:1">${esc(s.title)}</span>
+        <span class="del" onclick="delTask('${s.id}')">×</span></div>`;});
     h+='</div>';
   });
   box.innerHTML=h;
