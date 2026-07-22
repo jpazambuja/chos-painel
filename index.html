@@ -141,8 +141,8 @@ tr:last-child td{border-bottom:none}
     <h2>Visão Geral</h2><div class="sub" id="ovSub">—</div>
     <div class="grid g4" id="ovKpis" style="margin-top:14px"></div>
     <div id="ovAlert" style="display:none;margin-top:12px;padding:12px 14px;border-radius:10px;background:#F9ECE9;border:1px solid var(--red);color:var(--red);font-size:14px"></div>
-    <div class="sec-title">Focos da semana</div>
-    <div class="card hint gold">Meça com os relatórios: <b>chopp a R$14</b> segurou o volume? · <b>Estrella/Cerpa</b> premium vingaram? · <b>taxa de anexação do combo</b> (meta ≥ 20%) · <b>diaristas a pagar</b> na segunda (aba Ponto).</div>
+    <div class="sec-title">Esta semana <span class="muted" style="font-weight:400;font-size:13px" id="ovWeekRange"></span></div>
+    <div id="ovWeek"></div>
   </section>
 
   <section id="metas" class="pane">
@@ -198,7 +198,16 @@ tr:last-child td{border-bottom:none}
     <h2>Financeiro</h2>
     <div class="tabs" style="margin:8px 0 4px"><button class="finsub" data-f="contas" onclick="showFin('contas')">Contas</button><button class="finsub" data-f="banco" onclick="showFin('banco')">Banco</button><button class="finsub" data-f="taxas" onclick="showFin('taxas')">Taxas de cartão</button><button class="finsub" data-f="fechamento" onclick="showFin('fechamento')">Fechamento</button></div>
     <div class="sub">Banco & Conciliação — suba o extrato (.ofx/.csv), classifique entradas/saídas e confira se as vendas caíram.</div>
-    <div class="unitpick" style="margin-top:10px"><span class="muted">Mês:</span><input id="bankMonth" type="month" style="width:auto" onchange="renderBanco()"><button class="sm" onclick="document.getElementById('bankMonth').value='';renderBanco()">Todos os meses</button></div>
+    <div class="unitpick" style="margin-top:10px;gap:8px;flex-wrap:wrap;align-items:center">
+      <b>Semana:</b>
+      <button class="sm" onclick="bankWeekNav(-1)">‹</button>
+      <span id="bankWeekLbl" style="font-weight:700;min-width:150px;text-align:center"></span>
+      <button class="sm" onclick="bankWeekNav(1)">›</button>
+      <button class="sm primary" onclick="bankWeekNav(0)">Esta semana</button>
+      <span class="muted" style="margin-left:12px">ou mês inteiro:</span>
+      <input id="bankMonth" type="month" style="width:auto" onchange="renderBanco()">
+      <button class="sm" onclick="document.getElementById('bankMonth').value='';renderBanco()">voltar p/ semana</button>
+    </div>
     <div class="grid g4" id="bankKpis" style="margin:14px 0"></div>
     <div id="bankBalances"></div>
     <div id="bankDrop" class="drop"><b>Arraste o extrato aqui</b> ou clique — o sistema identifica sozinho o banco (Itaú/Sicoob PDF, OFX ou CSV)<input type="file" id="bankFile" accept=".ofx,.csv,.txt,.pdf" style="display:none"></div>
@@ -210,6 +219,18 @@ tr:last-child td{border-bottom:none}
         <div><label class="fld">Categoria contada como recebimento de cartão</label><input id="bankCardCat" list="bankCats" value="Venda Cartão" oninput="renderBanco()"><datalist id="bankCats"></datalist></div>
         <div style="display:flex;align-items:flex-end"><div id="bankMatch" class="hint" style="margin:0"></div></div>
       </div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <div class="sec-title" style="margin-top:0">➕ Adicionar pagamento (programado ou avulso)</div>
+      <div class="grid g3">
+        <div><label class="fld">Data</label><input id="addData" type="date"></div>
+        <div><label class="fld">Favorecido / o que é</label><input id="addFav" placeholder="ex: Coca-Cola, diária Fulano"></div>
+        <div><label class="fld">Categoria</label><select id="addCat"></select></div>
+        <div><label class="fld">Valor (R$)</label><input id="addVal" placeholder="0,00"></div>
+        <div><label class="fld">Tipo</label><select id="addTipo"><option value="saida">Saída (pagamento)</option><option value="entrada">Entrada (recebimento)</option></select></div>
+        <div><label class="fld">Situação</label><select id="addStatus"><option value="previsto">Previsto (a pagar)</option><option value="realizado">Já pago</option></select></div>
+      </div>
+      <button class="primary" style="margin-top:10px" onclick="addBankManual()">Adicionar</button>
     </div>
     <div id="bankArea"></div>
   </section>
@@ -516,17 +537,69 @@ function renderOverview(){
     const tot=fp.filter(x=>x.period_start===per.period_start&&x.period_end===per.period_end).reduce((s,x)=>s+(+x.gross),0);
     fatKpi=kpi('Vendas (último período)',brl(tot),fmtBr(per.period_start)+' a '+fmtBr(per.period_end));}
   else fatKpi=kpi('Vendas (último período)','—','suba os relatórios no Fechamento');
+  const tkKpi=(curUnit==='371f4479-54fd-45c0-a1e7-46452ba44ded')?kpi('Ticket médio/mesa (noite)','R$ 80,50','base jun/26 · meta: subir'):'';
   el.innerHTML=`
     ${fatKpi}
     ${kpi('Tarefas a fazer',afazer,'plano de ação')}
     ${kpi('Diaristas a pagar (semana)',brl(diaTot),'fecha segunda-feira')}
-    ${concKpi}`;
+    ${concKpi}
+    ${tkKpi}`;
   const al=document.getElementById('ovAlert');
   if(al){if(gap!==null&&Math.abs(gap)>=FECH_LIMITE){al.style.display='block';
     al.innerHTML='⚠️ <b>Alerta de conciliação:</b> no último fechamento, as maquininhas capturaram <b>'+brl(gap)+'</b> '+(gap>0?'a mais':'a menos')+' em cartão do que o PDV registrou. Confira na aba Fechamento (pode ser venda lançada em Pix/dinheiro por engano, ou venda fora do PDV).';}
     else al.style.display='none';}
+  renderOvWeek();
 }
 function kpi(l,v,n){return `<div class="card kpi"><div class="lbl">${l}</div><div class="val">${v}</div><div class="note">${n||''}</div></div>`;}
+
+/* ---------- Esta semana (Visão Geral) ---------- */
+const DIAS=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+function isoHoje(){const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);}
+function isoMais(n){const d=new Date();d.setDate(d.getDate()+n);return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);}
+function renderOvWeek(){
+  const box=document.getElementById('ovWeek'); if(!box)return;
+  const hoje=isoHoje(), fim=isoMais(7);
+  const meus=tasks.filter(t=>(!t.unit_id||t.unit_id===curUnit)&&t.status!=='feito');
+  const daSemana=meus.filter(t=>t.due_date&&t.due_date<=fim);
+  const rng=document.getElementById('ovWeekRange');
+  if(rng)rng.textContent=daSemana.length?('· '+daSemana.length+' com prazo até '+fmtBr(fim)):'';
+  if(!daSemana.length){
+    box.innerHTML='<div class="card hint gold">Nenhuma tarefa com prazo nesta semana. Abra <b>Metas &amp; Tarefas</b> e coloque prazo no que importa — sem prazo, tarefa não acontece.</div>';
+    return;
+  }
+  // agrupa por data
+  const g={};daSemana.forEach(t=>{(g[t.due_date]=g[t.due_date]||[]).push(t);});
+  const datas=Object.keys(g).sort();
+  const metaDe=id=>{const gg=goals.find(x=>x.id===id);return gg?gg.title:'Sem meta';};
+  let html='';
+  datas.forEach(d=>{
+    const atrasado=d<hoje, ehHoje=d===hoje;
+    const dt=new Date(d+'T12:00');
+    const rot=atrasado?'ATRASADO':(ehHoje?'HOJE':DIAS[dt.getDay()]);
+    const cor=atrasado?'var(--red)':(ehHoje?'var(--gold,#B08D57)':'var(--ink,#1B3A2B)');
+    html+=`<div style="margin:14px 0 6px;display:flex;align-items:center;gap:8px">
+      <span style="font-weight:700;font-size:13px;letter-spacing:.04em;color:${cor}">${rot}</span>
+      <span class="muted" style="font-size:12px">${fmtBr(d)}</span>
+      <span style="flex:1;height:1px;background:#E6E2DA"></span></div>`;
+    g[d].sort((a,b)=>(b.title.startsWith('🔴')?1:0)-(a.title.startsWith('🔴')?1:0));
+    g[d].forEach(t=>{
+      const subs=tasks.filter(x=>x.parent_id===t.id);
+      const feitas=subs.filter(x=>x.status==='feito').length;
+      const st=t.status==='fazendo'?'<span class="pill" style="background:#FFF3CD;color:#7A5B00">em andamento</span>':'';
+      html+=`<div class="card" style="padding:10px 12px;margin-bottom:6px;display:flex;gap:10px;align-items:flex-start;${atrasado?'border-color:var(--red);background:#F9ECE9':''}">
+        <button onclick="cycleTask('${t.id}','${t.status}')" title="marcar" style="all:unset;cursor:pointer;font-size:16px;line-height:1.2">☐</button>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;line-height:1.35">${esc(t.title)}</div>
+          <div class="muted" style="font-size:12px;margin-top:3px">
+            ${esc(metaDe(t.goal_id))}${subs.length?' · '+feitas+'/'+subs.length+' subtarefas':''} ${st}
+          </div>
+        </div>
+        <button onclick="openGoal('${t.goal_id||'__orfas__'}')" style="all:unset;cursor:pointer;color:var(--muted);font-size:18px" title="abrir meta">›</button>
+      </div>`;
+    });
+  });
+  box.innerHTML=html;
+}
 
 /* ===================== TAREFAS ===================== */
 // Nova tarefa dentro de uma meta (goal_id=null → tarefa avulsa, aparece no card "Sem meta")
@@ -1093,7 +1166,7 @@ function parseBankCSV(txt){
   }
   return out;
 }
-const BANK_CATS=['Venda Cartão','Venda Pix','Venda Brendi','Fornecedor','Folha/Salário','Pró-labore','Serviços','Impostos/Taxas','Consórcio/Financiamento','Transferência interna','Outros','Não classificado'];
+const BANK_CATS=['Venda Cartão','Venda Pix','Venda Brendi','Receita/Repasse','Fornecedor/Mercadoria','Compras/Insumos','Folha/Diárias','Folha/Prestador','Pró-labore','Serviços/Manutenção','Boleto/Título','Cartão de crédito','Tarifas/Pedágio','Impostos','Aluguel','Retirada/Vale sócio','Consórcio/Financiamento','Transferência interna','Aplicação (RDC)','Outras saídas/Pix','Outros','Não classificado'];
 const VENDA_CATS=['Venda Cartão','Venda Pix','Venda Brendi'];
 function autoCat(desc,amount){const d=norm(desc);const isOut=(+amount)<0;
   if(/ch food|bernardin|mesma titular|-msm|pix\.emit\.out if-msm/.test(d))return 'Transferência interna';
@@ -1201,6 +1274,46 @@ async function detectAndRoute(file){
 }
 async function handleBankFile(file){return detectAndRoute(file);}
 async function setBankCat(id,cat){await sb.from('bank_tx').update({category:cat}).eq('id',id);const t=bank.find(x=>x.id===id);if(t)t.category=cat;renderBanco();}
+async function setBankNota(id,txt){await sb.from('bank_tx').update({nota:txt}).eq('id',id);const t=bank.find(x=>x.id===id);if(t)t.nota=txt;}
+async function uploadComprovante(id,input){
+  const f=input.files&&input.files[0];if(!f)return;
+  showBankMsg('⏳ Enviando comprovante...',true);
+  try{
+    const path=id+'_'+Date.now()+'_'+f.name.replace(/[^\w.\-]/g,'_');
+    const up=await sb.storage.from('comprovantes').upload(path,f,{upsert:true});
+    if(up.error)throw up.error;
+    const {data}=sb.storage.from('comprovantes').getPublicUrl(path);
+    await sb.from('bank_tx').update({comprovante_url:data.publicUrl}).eq('id',id);
+    const t=bank.find(x=>x.id===id);if(t)t.comprovante_url=data.publicUrl;
+    renderBanco();showBankMsg('✓ Comprovante anexado.');
+  }catch(e){showBankMsg('Erro ao enviar: '+e.message,false);}
+}
+/* --- Fechamento semanal (seg→dom) --- */
+let bankWeekStart;
+function isoMonday(d){const x=d?new Date(d+'T12:00'):new Date();const wd=(x.getDay()+6)%7;x.setDate(x.getDate()-wd);return x.toISOString().slice(0,10);}
+function weekRangeFrom(mon){const s=new Date(mon+'T12:00');const e=new Date(s);e.setDate(s.getDate()+6);return[s.toISOString().slice(0,10),e.toISOString().slice(0,10)];}
+function bankWeekNav(dir){
+  const m=document.getElementById('bankMonth');if(m)m.value='';
+  if(dir===0||bankWeekStart===undefined)bankWeekStart=isoMonday();
+  else{const d=new Date(bankWeekStart+'T12:00');d.setDate(d.getDate()+dir*7);bankWeekStart=d.toISOString().slice(0,10);}
+  renderBanco();
+}
+async function setBankStatus(id,st){await sb.from('bank_tx').update({status:st}).eq('id',id);const t=bank.find(x=>x.id===id);if(t)t.status=st;await loadAll();renderBanco();}
+async function addBankManual(){
+  const data=document.getElementById('addData').value;
+  const fav=(document.getElementById('addFav').value||'').trim();
+  const cat=document.getElementById('addCat').value;
+  const tipo=document.getElementById('addTipo').value;
+  const status=document.getElementById('addStatus').value;
+  let v=parseFloat((document.getElementById('addVal').value||'').replace(/\./g,'').replace(',','.'));
+  if(!data||!fav||!v||isNaN(v)){showBankMsg('Preencha data, favorecido e valor.',false);return;}
+  v=Math.abs(v)*(tipo==='saida'?-1:1);
+  const row={unit_id:curUnit,tx_date:data,description:fav,favorecido:fav,nota:fav,amount:v,category:cat,status:status,reconciled:false,source:'manual',account:'Sicoob'};
+  const {error}=await sb.from('bank_tx').insert(row);
+  if(error){showBankMsg('Erro: '+error.message,false);return;}
+  document.getElementById('addFav').value='';document.getElementById('addVal').value='';
+  await loadAll();renderBanco();showBankMsg('✓ Pagamento adicionado ('+status+').');
+}
 async function toggleRec(id,v){await sb.from('bank_tx').update({reconciled:!v}).eq('id',id);await loadAll();renderBanco();}
 async function delBank(id){if(!confirm('Excluir lançamento do extrato?'))return;await sb.from('bank_tx').delete().eq('id',id);await loadAll();renderBanco();}
 async function setRate(id,field,v){const patch={};patch[field]=parseFloat((v||'0').replace(',','.'))||0;
@@ -1244,19 +1357,26 @@ let bankFilter='todos';
 function setBankFilter(v){bankFilter=v;renderBanco();}
 function renderBanco(){
   renderRates();
+  const addCatEl=document.getElementById('addCat');
+  if(addCatEl&&!addCatEl.dataset.init){addCatEl.innerHTML=BANK_CATS.filter(c=>c!=='Não classificado').map(c=>`<option>${c}</option>`).join('');addCatEl.dataset.init='1';}
+  if(bankWeekStart===undefined)bankWeekStart=isoMonday();
+  const addData=document.getElementById('addData'); if(addData&&!addData.value)addData.value=new Date().toISOString().slice(0,10);
   const mSel=document.getElementById('bankMonth');
-  if(mSel&&!mSel.value&&!mSel.dataset.init){mSel.value=new Date().toISOString().slice(0,7);mSel.dataset.init='1';}
-  const bmo=mSel?mSel.value:'';
-  const rows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(!bmo||(b.tx_date||'').slice(0,7)===bmo));
+  const bmo=(mSel&&mSel.value)?mSel.value:'';
+  let ws='',we=''; const lbl=document.getElementById('bankWeekLbl');
+  if(bmo){ if(lbl)lbl.textContent='— mês —'; }
+  else { const wr=weekRangeFrom(bankWeekStart); ws=wr[0]; we=wr[1]; if(lbl)lbl.textContent=fmtBr(ws)+' a '+fmtBr(we); }
+  const rows=bank.filter(b=>(!b.unit_id||b.unit_id===curUnit)&&(bmo?((b.tx_date||'').slice(0,7)===bmo):(b.tx_date>=ws&&b.tx_date<=we)));
+  const real=rows.filter(b=>(b.status||'realizado')!=='previsto');
+  const prev=rows.filter(b=>b.status==='previsto');
   const cats=[...new Set(rows.map(b=>b.category).filter(Boolean))];
   const dl=document.getElementById('bankCats');if(dl)dl.innerHTML=cats.map(c=>`<option value="${esc(c)}">`).join('');
   const isTransf=b=>b.category==='Transferência interna';
-  const entradas=rows.filter(b=>b.amount>0&&!isTransf(b)).reduce((s,b)=>s+(+b.amount),0);
-  const saidas=rows.filter(b=>b.amount<0&&!isTransf(b)).reduce((s,b)=>s+(+b.amount),0);
-  const transf=rows.filter(isTransf).reduce((s,b)=>s+Math.abs(+b.amount),0);
-  const conc=rows.filter(b=>b.reconciled).length;
+  const entradas=real.filter(b=>b.amount>0&&!isTransf(b)).reduce((s,b)=>s+(+b.amount),0);
+  const saidas=real.filter(b=>b.amount<0&&!isTransf(b)).reduce((s,b)=>s+(+b.amount),0);
+  const aPagar=prev.filter(b=>b.amount<0).reduce((s,b)=>s+Math.abs(+b.amount),0);
   const kp=document.getElementById('bankKpis');
-  if(kp)kp.innerHTML=kpi('Entradas (receitas)',brl(entradas))+kpi('Saídas (despesas)',brl(Math.abs(saidas)))+kpi('Resultado',brl(entradas+saidas),'entradas − saídas')+kpi('Transf. internas',brl(transf),'não contam');
+  if(kp)kp.innerHTML=kpi('Entradas (recebidas)',brl(entradas))+kpi('Saídas (pagas)',brl(Math.abs(saidas)))+kpi('Resultado realizado',brl(entradas+saidas),'entradas − saídas')+kpi('A pagar (previsto)',brl(aPagar),prev.length+' lançamento(s)');
   // saldo por conta
   const bal=document.getElementById('bankBalances');
   if(bal){const accs={};rows.forEach(b=>{accs[b.account||'—']=(accs[b.account||'—']||0)+(+b.amount);});
@@ -1282,15 +1402,18 @@ function renderBanco(){
   let h='<div class="sec-title">Categorizar lançamentos do extrato</div>';
   if(naoClass>0)h+=`<div class="hint gold">⚠️ <b>${naoClass}</b> lançamento(s) ainda em "Não classificado". Use o filtro abaixo e classifique cada um — assim o Recebido e o Pago ficam corretos.</div>`;
   h+=`<div class="unitpick" style="gap:6px;flex-wrap:wrap;margin-bottom:8px">${btn('todos','Todos ('+rows.length+')')}${btn('naoclass','Não classificados ('+naoClass+')')}${btn('entradas','Entradas')}${btn('saidas','Saídas')}${btn('pix','Só Pix')}</div>`;
-  if(list.length){h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Data</th><th>Conta</th><th>Descrição</th><th>Categoria</th><th class="r">Valor</th><th>Conc.</th><th></th></tr></thead><tbody>';
+  if(list.length){h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Data</th><th>Conta</th><th>Descrição</th><th>Categoria</th><th>O que foi</th><th class="r">Valor</th><th>Compr.</th><th>Conc.</th><th></th></tr></thead><tbody>';
     list.forEach(b=>{const cur=b.category||'Não classificado';const opts=(BANK_CATS.includes(cur)?BANK_CATS:[cur,...BANK_CATS]);
+      const comp=b.comprovante_url?`<a href="${esc(b.comprovante_url)}" target="_blank" title="ver comprovante">📎</a>`:`<label style="cursor:pointer" title="anexar comprovante">➕<input type="file" accept="image/*,application/pdf" style="display:none" onchange="uploadComprovante('${b.id}',this)"></label>`;
       h+=`<tr>
       <td>${new Date(b.tx_date+'T00:00').toLocaleDateString('pt-BR')}</td>
       <td class="muted">${esc(b.account||'—')}</td>
-      <td style="max-width:260px">${esc(b.description)}</td>
+      <td style="max-width:220px">${b.status==='previsto'?'<span class="badge b-bad">previsto</span> ':''}${esc(b.description)}</td>
       <td><select style="width:auto;padding:5px;${cur==='Não classificado'?'border-color:var(--gold)':''}" onchange="setBankCat('${b.id}',this.value)">${opts.map(c=>`<option ${c===cur?'selected':''}>${esc(c)}</option>`).join('')}</select></td>
+      <td><input value="${esc(b.nota||'')}" placeholder="favorecido / motivo" style="width:150px;padding:5px" onchange="setBankNota('${b.id}',this.value)"></td>
       <td class="r" style="color:${b.amount>=0?'var(--greenl)':'var(--red)'}">${brl2(b.amount)}</td>
-      <td><span class="st ${b.reconciled?'st-feito':'st-afazer'}" style="cursor:pointer" onclick="toggleRec('${b.id}',${b.reconciled})">${b.reconciled?'Sim':'Não'}</span></td>
+      <td style="text-align:center">${comp}</td>
+      <td>${b.status==='previsto'?`<button class="sm primary" onclick="setBankStatus('${b.id}','realizado')">pagar</button>`:`<span class="st ${b.reconciled?'st-feito':'st-afazer'}" style="cursor:pointer" onclick="toggleRec('${b.id}',${b.reconciled})">${b.reconciled?'Sim':'Não'}</span>`}</td>
       <td><span class="del" onclick="delBank('${b.id}')">×</span></td></tr>`;});
     h+='</tbody></table></div>';}
   else h+='<div class="muted">Nenhum lançamento neste filtro.</div>';
