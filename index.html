@@ -1192,14 +1192,16 @@ function escalaNav(days){
     <button class="sm" onclick="escalaMOff++;renderEscala()">Próximo ▶</button>
     ${escalaMOff!==0?'<button class="sm" onclick="escalaMOff=0;renderEscala()">Hoje</button>':''}
     <span style="flex:1"></span>
-    <button class="sm" onclick="fillMonthPattern()">📋 Repetir 1ª semana no mês todo</button>
+    <button class="sm" onclick="fill6x1()">⚡ Preencher 6×1</button>
+    <button class="sm" onclick="fillMonthPattern()">📋 Repetir 1ª semana</button>
     <button class="sm" onclick="printEscala()">🖨 Imprimir</button>
+    <button class="sm" onclick="showEq('equipe')">＋ Funcionário</button>
   </div>`;
 }
 function renderEscala(){
   const area=document.getElementById('escalaArea');
   const days=monthDays(escalaMOff);
-  if(!emps.length){area.innerHTML=escalaNav(days)+shiftBlock()+'<div class="muted">Nenhum funcionário cadastrado. Cadastre na aba Equipe.</div>';return;}
+  if(!emps.length){area.innerHTML=escalaNav(days)+shiftBlock()+'<div class="card" style="text-align:center"><div class="muted" style="margin-bottom:10px">Nenhum funcionário cadastrado ainda. O cadastro fica na aba <b>Equipe → Pessoas &amp; Acessos</b>.</div><button class="primary" onclick="showEq(\'equipe\')">＋ Cadastrar funcionário</button></div>';return;}
   const ush=unitShifts();
   const shById={};shifts.forEach(s=>shById[s.id]=s);
   const cycle=['',...ush.map(s=>s.id),'folga','falta'];
@@ -1217,9 +1219,44 @@ function renderEscala(){
       else if(shById[v]){lbl=shAbbr(shById[v].label);bg=shById[v].color+'22';col=shById[v].color;tit=shById[v].label+' '+shById[v].start_t+'–'+shById[v].end_t;}
       h+=`<td class="r gridcell" title="${tit}" style="background:${bg};color:${col};padding:6px 4px" onclick="cycleCell('${e.user_id}','${ds}')">${lbl}</td>`;});
     h+='</tr>';});
-  h+='</tbody></table></div><div class="hint">Clique numa célula para alternar: · → turnos ('+ush.map(s=>shAbbr(s.label)+'='+esc(s.label)).join(', ')+') → FLG=Folga → FAL=Falta. Lance a 1ª semana e use "Repetir 1ª semana no mês todo" como base; depois ajuste as folgas.</div>';
-  area.innerHTML=escalaNav(days)+shiftBlock()+h;
+  h+='</tbody></table></div><div class="hint">Clique numa célula para alternar: · → turnos ('+ush.map(s=>shAbbr(s.label)+'='+esc(s.label)).join(', ')+') → FLG=Folga → FAL=Falta. Fluxo 6×1: marque as FOLGAS que cada um escolheu → clique "⚡ Preencher 6×1" para completar os dias de trabalho com o turno padrão.</div>';
+  area.innerHTML=escalaNav(days)+shiftBlock()+h+folga6x1Block(days);
   window._cycle=cycle;
+}
+async function fill6x1(){
+  const days=monthDays(escalaMOff);
+  const list=emps.filter(e=>!e.unit_id||e.unit_id===curUnit);
+  const com=list.filter(e=>e.work_shift),sem=list.filter(e=>!e.work_shift);
+  if(!com.length)return alert('Nenhum funcionário tem TURNO PADRÃO definido. Defina na aba Equipe (coluna "Turno padrão") — é ele que preenche os dias de trabalho.');
+  const ups=[];
+  com.forEach(e=>days.forEach(d=>{const ds=dstr(d);
+    if(!schedule[e.user_id+'|'+ds])ups.push({employee_id:e.user_id,day:ds,value:e.work_shift});}));
+  if(!ups.length)return alert('Nada a preencher — todos os dias já têm marcação.');
+  let msg='Preencher '+ups.length+' dias vazios com o turno padrão de cada funcionário? Folgas e faltas já marcadas são mantidas.';
+  if(sem.length)msg+='\n\nFicam de fora (sem turno padrão): '+sem.map(x=>x.name||x.login).join(', ');
+  if(!confirm(msg))return;
+  const {error}=await sb.from('schedule').upsert(ups,{onConflict:'employee_id,day'});
+  if(error)return alert('Erro: '+error.message);
+  await loadAll();renderEscala();
+}
+function folga6x1Block(days){
+  const funcs=emps.filter(e=>e.role==='funcionario'&&(!e.unit_id||e.unit_id===curUnit));
+  if(!funcs.length)return '';
+  const weeks=[];let cur=[];
+  days.forEach(d=>{if(d.getDay()===1&&cur.length){weeks.push(cur);cur=[];}cur.push(d);});
+  if(cur.length)weeks.push(cur);
+  const fullWeeks=weeks.filter(w=>w.length===7);
+  let h='<div class="sec-title">Conferência 6×1 do mês</div><div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Funcionário</th><th class="r">Folgas no mês</th><th class="r">Folga no fim de semana</th><th>Semanas sem folga</th></tr></thead><tbody>';
+  funcs.forEach(e=>{
+    let folgas=0,fds=0;const semFolga=[];
+    days.forEach(d=>{const v=schedule[e.user_id+'|'+dstr(d)];
+      if(v==='folga'){folgas++;if(d.getDay()===0||d.getDay()===6)fds++;}});
+    fullWeeks.forEach(w=>{if(!w.some(d=>schedule[e.user_id+'|'+dstr(d)]==='folga'))semFolga.push(w[0].getDate()+'–'+w[6].getDate());});
+    h+=`<tr><td><b>${esc(e.name||e.login)}</b></td><td class="r">${folgas}</td>
+      <td class="r">${fds>0?'<span class="badge b-good">✔ '+fds+'</span>':'<span class="badge b-bad">✖ nenhuma</span>'}</td>
+      <td>${semFolga.length?'<span style="color:var(--red)">'+semFolga.join(' · ')+'</span>':'<span class="badge b-good">ok</span>'}</td></tr>`;});
+  h+='</tbody></table></div><div class="hint">Regra da casa: 6×1 — cada semana completa precisa de 1 folga, e pelo menos 1 folga do mês deve cair em sábado ou domingo. O funcionário escolhe os dias; a conferência acusa quem ficou fora da regra.</div>';
+  return h;
 }
 async function cycleCell(emp,ds){
   const cycle=window._cycle;const cur=schedule[emp+'|'+ds]||'';
