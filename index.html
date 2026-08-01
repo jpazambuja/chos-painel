@@ -669,7 +669,7 @@ async function logout(){
   applyUI();setLoginRole('emp');
 }
 function applyUI(){
-  document.getElementById('loginScreen').style.display=!session?'block':'none';
+  document.getElementById('loginScreen').style.display=!session?'flex':'none';
   document.getElementById('adminApp').style.display=(session&&session.role==='admin')?'block':'none';
   document.getElementById('empApp').style.display=(session&&session.role==='emp')?'block':'none';
 }
