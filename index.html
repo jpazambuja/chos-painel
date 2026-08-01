@@ -494,13 +494,13 @@ display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-s
 
   <section id="escala" class="pane">
     <h2>Escala</h2>
-    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Pessoas & Acessos</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button></div><div class="sub">Escala planejada por funcionário. Clique numa célula para alternar turno/folga.</div>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Pessoas & Acessos</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button></div><div class="sub">Escala MENSAL por funcionário. Lance a 1ª semana, use "Repetir no mês todo" e ajuste as folgas. Turnos com diária seg–sex e sáb/dom. Imprima para a equipe.</div>
     <div id="escalaArea" style="margin-top:12px"></div>
   </section>
 
   <section id="ponto" class="pane">
     <h2>Ponto & Diaristas</h2>
-    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Pessoas & Acessos</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button></div><div class="sub">Presença registrada e o valor a pagar aos diaristas nesta semana (fecha segunda-feira).</div>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Pessoas & Acessos</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button></div><div class="sub">Escala × ponto real, horas, jornadas sem saída e ajuste manual. Fechamento dos diaristas pronto toda segunda: quem bateu ponto e quanto recebe.</div>
     <div id="pontoArea" style="margin-top:12px"></div>
   </section>
 
@@ -792,7 +792,7 @@ async function renderOverview(){
   const u=units.find(x=>x.id===curUnit);
   document.getElementById('ovSub').textContent=(u?u.name:'—')+' · painel executivo do grupo CH';
   const afazer=tasks.filter(t=>t.status!=='feito').length;
-  const diaTot=weekDiaristaTotal().total;
+  const diaTot=diaristaWeek(punchesByEmpDay(),0).total;
   const fbR=(fbResumo&&fbResumo.length)?fbResumo[fbResumo.length-1]:null;
   const {vd,dc}=await ovFetchBI();
   const mesV=vd.length?vd[vd.length-1].mes:null;
@@ -1143,41 +1143,82 @@ function fmtMonth(m){const[y,mo]=m.split('-');return MESES[+mo-1].slice(0,3)+'/'
 
 /* ===================== ESCALA ===================== */
 function dstr(d){return d.toISOString().slice(0,10);}
+let escalaMOff=0; // offset de meses (escala é lançada mensalmente)
+function unitShifts(){return shifts.filter(s=>!s.unit_id||s.unit_id===curUnit);}
+function escalaDays(off){const today=new Date();const start=new Date(today);const _off=(today.getDay()+6)%7;
+  start.setDate(today.getDate()-_off+(off||0)*7);start.setHours(12,0,0,0); // 12h evita virada de dia por fuso (UTC)
+  return [...Array(7)].map((_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);return d;});}
+function monthDays(moff){const t=new Date();const first=new Date(t.getFullYear(),t.getMonth()+(moff||0),1,12);
+  const m=first.getMonth();const days=[];const d=new Date(first);
+  while(d.getMonth()===m){days.push(new Date(d));d.setDate(d.getDate()+1);}
+  return days;}
+function shAbbr(l){return esc((l||'').slice(0,3));}
 function shiftBlock(){
-  let s='<div class="card"><div class="sec-title" style="margin-top:0">Turnos</div><div>';
-  shifts.forEach(sh=>s+=`<span class="pill" style="background:${sh.color}22;color:${sh.color};margin:2px 4px;display:inline-block">${esc(sh.label)} · ${sh.start_t}–${sh.end_t} <span class="del" style="font-size:14px" onclick="delShift('${sh.id}')">×</span></span>`);
-  s+=`</div><div class="addbar"><input id="nsLabel" placeholder="nome do turno" style="flex:2">
-    <input id="nsStart" value="10:00" style="max-width:100px"><input id="nsEnd" value="17:00" style="max-width:100px">
+  const ush=unitShifts();
+  let s='<div class="card"><div class="sec-title" style="margin-top:0">Turnos & diárias</div>';
+  if(ush.length){
+    s+='<div style="overflow:auto"><table><thead><tr><th>Turno</th><th>Horário</th><th class="r">Diária seg–sex</th><th class="r">Diária sáb/dom</th><th></th></tr></thead><tbody>';
+    ush.forEach(sh=>s+=`<tr><td><span class="pill" style="background:${sh.color}22;color:${sh.color}">${esc(sh.label)}</span></td><td class="muted">${sh.start_t}–${sh.end_t}</td>
+      <td class="r"><input value="${+sh.diaria_sem||0}" style="width:80px;text-align:right" onchange="setShiftDiaria('${sh.id}','diaria_sem',this.value)"></td>
+      <td class="r"><input value="${+sh.diaria_fds||0}" style="width:80px;text-align:right" onchange="setShiftDiaria('${sh.id}','diaria_fds',this.value)"></td>
+      <td><button class="sm" onclick="delShift('${sh.id}')">🗑</button></td></tr>`);
+    s+='</tbody></table></div>';
+  }
+  s+=`<div class="addbar" style="margin-top:8px"><input id="nsLabel" placeholder="nome do turno (ex: Manhã, Noite)" style="flex:2">
+    <input id="nsStart" value="10:00" style="max-width:90px"><input id="nsEnd" value="17:00" style="max-width:90px">
+    <input id="nsDSem" placeholder="diária seg–sex" style="max-width:130px"><input id="nsDFds" placeholder="diária sáb/dom" style="max-width:130px">
     <input id="nsColor" type="color" value="#2D6A4F" style="max-width:56px;padding:2px">
-    <button class="primary" onclick="addShift()">＋ Turno</button></div></div>`;
+    <button class="primary" onclick="addShift()">＋ Turno</button></div>
+  <div class="hint">A diária do diarista vem do TURNO: dia útil usa "seg–sex", sábado e domingo usam "sáb/dom". A diária fixa no cadastro da pessoa só é usada se o turno não tiver valor.</div></div>`;
   return s;
 }
+async function setShiftDiaria(id,f,v){
+  const o={};o[f]=parseFloat((v||'0').toString().replace(',','.'))||0;
+  const {error}=await sb.from('shifts').update(o).eq('id',id);
+  if(error)return alert('Erro: '+error.message);
+  await loadAll();renderEscala();renderPonto();}
 async function addShift(){const label=val('nsLabel');if(!label)return alert('Dê um nome ao turno.');
   const sort=(shifts.reduce((m,s)=>Math.max(m,s.sort||0),0))+1;
-  await sb.from('shifts').insert({label,start_t:val('nsStart'),end_t:val('nsEnd'),color:document.getElementById('nsColor').value,sort,unit_id:curUnit});
+  const dsem=parseFloat((val('nsDSem')||'0').replace(',','.'))||0,dfds=parseFloat((val('nsDFds')||'0').replace(',','.'))||0;
+  const {error}=await sb.from('shifts').insert({label,start_t:val('nsStart'),end_t:val('nsEnd'),color:document.getElementById('nsColor').value,sort,unit_id:curUnit,diaria_sem:dsem,diaria_fds:dfds});
+  if(error)return alert('Erro ao criar turno: '+error.message);
   await loadAll();renderEscala();}
 async function delShift(id){if(!confirm('Excluir turno?'))return;await sb.from('shifts').delete().eq('id',id);await loadAll();renderEscala();}
+function escalaNav(days){
+  const mesLbl=MESES[days[0].getMonth()]+' / '+days[0].getFullYear();
+  return `<div class="card" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <button class="sm" onclick="escalaMOff--;renderEscala()">◀ Mês anterior</button>
+    <b style="min-width:150px;text-align:center;text-transform:capitalize">${mesLbl}${escalaMOff===0?' · atual':''}</b>
+    <button class="sm" onclick="escalaMOff++;renderEscala()">Próximo ▶</button>
+    ${escalaMOff!==0?'<button class="sm" onclick="escalaMOff=0;renderEscala()">Hoje</button>':''}
+    <span style="flex:1"></span>
+    <button class="sm" onclick="fillMonthPattern()">📋 Repetir 1ª semana no mês todo</button>
+    <button class="sm" onclick="printEscala()">🖨 Imprimir</button>
+  </div>`;
+}
 function renderEscala(){
   const area=document.getElementById('escalaArea');
-  if(!emps.length){area.innerHTML=shiftBlock()+'<div class="muted">Nenhum funcionário cadastrado. Cadastre na aba Equipe.</div>';return;}
-  const today=new Date();const start=new Date(today);const _off=(today.getDay()+6)%7;start.setDate(today.getDate()-_off); // segunda
-  const days=[...Array(7)].map((_,i)=>{const d=new Date(start);d.setDate(start.getDate()+i);return d;});
+  const days=monthDays(escalaMOff);
+  if(!emps.length){area.innerHTML=escalaNav(days)+shiftBlock()+'<div class="muted">Nenhum funcionário cadastrado. Cadastre na aba Equipe.</div>';return;}
+  const ush=unitShifts();
   const shById={};shifts.forEach(s=>shById[s.id]=s);
-  const cycle=['','folga',...shifts.map(s=>s.id)];
-  let h='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Funcionário</th>';
-  days.forEach(d=>h+=`<th class="r">${['dom','seg','ter','qua','qui','sex','sáb'][d.getDay()]} ${d.getDate()}</th>`);
+  const cycle=['',...ush.map(s=>s.id),'folga','falta'];
+  const now=new Date();const tds=dstr(new Date(now.getFullYear(),now.getMonth(),now.getDate(),12));
+  let h='<div class="card" style="padding:0;overflow:auto"><table style="font-size:12px"><thead><tr><th>Funcionário</th>';
+  days.forEach(d=>{const wk=d.getDay()===0||d.getDay()===6;const isT=dstr(d)===tds;
+    h+=`<th class="r" style="min-width:42px;${wk?'background:var(--palhal);':''}${isT?'color:var(--green);':''}">${d.getDate()}<div class="bl muted" style="font-weight:400">${['dom','seg','ter','qua','qui','sex','sáb'][d.getDay()]}</div></th>`;});
   h+='</tr></thead><tbody>';
   emps.filter(e=>!e.unit_id||e.unit_id===curUnit).forEach(e=>{
-    h+=`<tr><td><b>${esc(e.name||e.login||'—')}</b><div class="bl muted">${esc(e.cargo||e.role)}</div></td>`;
+    h+=`<tr><td style="white-space:nowrap"><b>${esc(e.name||e.login||'—')}</b><div class="bl muted">${esc(e.cargo||e.role)}</div></td>`;
     days.forEach(d=>{const ds=dstr(d);const v=schedule[e.user_id+'|'+ds]||'';
-      let lbl='—',bg='transparent',col='var(--mut)';
-      if(v==='folga'){lbl='Folga';bg='var(--palhal)';}
-      else if(v==='falta'){lbl='Falta';bg='var(--dangerbg)';col='var(--red)';}
-      else if(shById[v]){lbl=shById[v].label;bg=shById[v].color+'22';col=shById[v].color;}
-      h+=`<td class="r gridcell" style="background:${bg};color:${col}" onclick="cycleCell('${e.user_id}','${ds}')">${lbl}</td>`;});
+      let lbl='·',bg='transparent',col='var(--mut)',tit='';
+      if(v==='folga'){lbl='FLG';bg='var(--palhal)';tit='Folga';}
+      else if(v==='falta'){lbl='FAL';bg='var(--dangerbg)';col='var(--red)';tit='Falta';}
+      else if(shById[v]){lbl=shAbbr(shById[v].label);bg=shById[v].color+'22';col=shById[v].color;tit=shById[v].label+' '+shById[v].start_t+'–'+shById[v].end_t;}
+      h+=`<td class="r gridcell" title="${tit}" style="background:${bg};color:${col};padding:6px 4px" onclick="cycleCell('${e.user_id}','${ds}')">${lbl}</td>`;});
     h+='</tr>';});
-  h+='</tbody></table></div><div class="hint">Clique numa célula para alternar: —, Folga, e os turnos ('+shifts.map(s=>s.label).join(', ')+').</div>';
-  area.innerHTML=shiftBlock()+h;
+  h+='</tbody></table></div><div class="hint">Clique numa célula para alternar: · → turnos ('+ush.map(s=>shAbbr(s.label)+'='+esc(s.label)).join(', ')+') → FLG=Folga → FAL=Falta. Lance a 1ª semana e use "Repetir 1ª semana no mês todo" como base; depois ajuste as folgas.</div>';
+  area.innerHTML=escalaNav(days)+shiftBlock()+h;
   window._cycle=cycle;
 }
 async function cycleCell(emp,ds){
@@ -1187,38 +1228,187 @@ async function cycleCell(emp,ds){
   else{await sb.from('schedule').upsert({employee_id:emp,day:ds,value:nxt},{onConflict:'employee_id,day'});}
   await loadAll();renderEscala();
 }
+async function fillMonthPattern(){
+  const days=monthDays(escalaMOff);
+  const firstMon=days.find(d=>d.getDay()===1);
+  if(!firstMon)return alert('Não achei uma segunda-feira neste mês.');
+  const list=emps.filter(e=>!e.unit_id||e.unit_id===curUnit);
+  const pat={};let has=false;
+  list.forEach(e=>{pat[e.user_id]={};
+    for(let i=0;i<7;i++){const d=new Date(firstMon);d.setDate(firstMon.getDate()+i);
+      const v=schedule[e.user_id+'|'+dstr(d)];if(v){pat[e.user_id][(d.getDay()+6)%7]=v;has=true;}}});
+  if(!has)return alert('Preencha primeiro a semana que começa em '+firstMon.toLocaleDateString('pt-BR')+' (1ª segunda do mês) — ela vira o padrão do mês.');
+  const limit=new Date(firstMon);limit.setDate(firstMon.getDate()+7);
+  const ups=[];
+  list.forEach(e=>days.forEach(d=>{
+    if(d>=firstMon&&d<limit)return; // não mexe na própria semana-padrão
+    const v=pat[e.user_id][(d.getDay()+6)%7];
+    if(v)ups.push({employee_id:e.user_id,day:dstr(d),value:v});}));
+  if(!ups.length)return alert('Nada a aplicar.');
+  if(!confirm('Aplicar o padrão da semana de '+firstMon.toLocaleDateString('pt-BR')+' ao mês inteiro? ('+ups.length+' marcações; sobrescreve o que houver)'))return;
+  const {error}=await sb.from('schedule').upsert(ups,{onConflict:'employee_id,day'});
+  if(error)return alert('Erro: '+error.message);
+  await loadAll();renderEscala();
+}
+function printEscala(){
+  const days=monthDays(escalaMOff);const shById={};shifts.forEach(s=>shById[s.id]=s);
+  const unitName=(units.find(u=>u.id===curUnit)||{}).name||'';
+  const mesLbl=MESES[days[0].getMonth()]+' / '+days[0].getFullYear();
+  const list=emps.filter(e=>!e.unit_id||e.unit_id===curUnit);
+  let rows='';
+  list.forEach(e=>{rows+='<tr><td style="white-space:nowrap"><b>'+esc(e.name||e.login||'—')+'</b><br><small>'+esc(e.cargo||e.role)+'</small></td>';
+    days.forEach(d=>{const v=schedule[e.user_id+'|'+dstr(d)]||'';let lb='·';
+      if(v==='folga')lb='FLG';else if(v==='falta')lb='FAL';
+      else if(shById[v])lb=shAbbr(shById[v].label);
+      const wk=d.getDay()===0||d.getDay()===6;
+      rows+='<td style="text-align:center'+(wk?';background:#f4f0e7':'')+'">'+lb+'</td>';});
+    rows+='</tr>';});
+  const head=days.map(d=>{const wk=d.getDay()===0||d.getDay()===6;
+    return '<th'+(wk?' style="background:#e8e0cf"':'')+'>'+d.getDate()+'<br><small>'+['D','S','T','Q','Q','S','S'][d.getDay()]+'</small></th>';}).join('');
+  const legend=unitShifts().map(s=>shAbbr(s.label)+' = '+esc(s.label)+' ('+s.start_t+'–'+s.end_t+')').join(' · ')+' · FLG = Folga · FAL = Falta';
+  const w=window.open('','_blank','width=1100,height=700');if(!w)return alert('Permita pop-ups para imprimir a escala.');
+  w.document.write(`<title>Escala ${unitName} — ${mesLbl}</title>
+  <style>@page{size:landscape}body{font-family:Arial,sans-serif;padding:20px;color:#222}h1{font-size:17px;color:#1B4332;margin:0}table{width:100%;border-collapse:collapse;margin-top:12px;font-size:9px}th,td{border:1px solid #bbb;padding:3px 2px}th{background:#f4f0e7}</style>
+  <h1>CH.OSEN — Escala · ${unitName}</h1><div style="color:#777;text-transform:capitalize">${mesLbl}</div>
+  <table><thead><tr><th>Funcionário</th>${head}</tr></thead><tbody>${rows}</tbody></table>
+  <p style="color:#555;font-size:9px;margin-top:10px">${legend}</p>
+  <p style="color:#999;font-size:9px">Gerado em ${new Date().toLocaleString('pt-BR')}</p>`);
+  w.document.close();w.focus();setTimeout(()=>w.print(),400);
+}
 
 /* ===================== PONTO & DIARISTAS ===================== */
-function weekBounds(){const t=new Date();const s=new Date(t);const off=(t.getDay()+6)%7;s.setDate(t.getDate()-off);s.setHours(0,0,0,0);
+function weekBoundsOff(off){const t=new Date();const s=new Date(t);const o=(t.getDay()+6)%7;s.setDate(t.getDate()-o+(off||0)*7);s.setHours(0,0,0,0);
   const e=new Date(s);e.setDate(s.getDate()+6);e.setHours(23,59,59,999);return[s,e];}
-function weekDiaristaTotal(){
-  const[s,e]=weekBounds();const dias={};let total=0;
-  const diaristas=emps.filter(x=>x.role==='diarista'&&(!x.unit_id||x.unit_id===curUnit));
-  diaristas.forEach(d=>{
-    const daysWorked=new Set();
-    punches.filter(p=>p.employee_id===d.user_id).forEach(p=>{const dt=new Date(p.ts);if(dt>=s&&dt<=e)daysWorked.add(dt.toISOString().slice(0,10));});
-    dias[d.user_id]={emp:d,days:daysWorked.size,val:daysWorked.size*(+d.diaria||0)};
-    total+=dias[d.user_id].val;});
-  return{dias,total,s,e};
+function weekBounds(){return weekBoundsOff(0);}
+// Dia LOCAL da batida (não UTC) — essencial para operação noturna: batida às 22h continua no mesmo dia
+function locDay(ts){const d=(ts instanceof Date)?ts:new Date(ts);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+// Soma horas de um dia pareando entrada→saída em sequência; open = ficou sem saída
+function dayHours(arr){let ms=0,open=false;
+  for(let i=0;i<arr.length;i++){
+    if(arr[i].type==='in'){
+      if(i+1<arr.length&&arr[i+1].type==='out'){ms+=new Date(arr[i+1].ts)-new Date(arr[i].ts);i++;}
+      else open=true;
+    }
+  }
+  return {ms,open};}
+function fmtH(ms){const m=Math.round(ms/60000);return Math.floor(m/60)+'h'+String(m%60).padStart(2,'0');}
+function punchesByEmpDay(){const m={};
+  punches.forEach(p=>{const k=p.employee_id+'|'+locDay(p.ts);(m[k]=m[k]||[]).push(p);});
+  Object.values(m).forEach(a=>a.sort((x,y)=>new Date(x.ts)-new Date(y.ts)));
+  return m;}
+// Turno do diarista no dia: escala do dia > turno padrão do cadastro > turno com início mais próximo da 1ª batida
+function diaristaShiftFor(emp,day,arr){
+  const shById={};shifts.forEach(s=>shById[s.id]=s);
+  const v=schedule[emp.user_id+'|'+day];
+  if(v&&shById[v])return shById[v];
+  if(emp.work_shift&&shById[emp.work_shift])return shById[emp.work_shift];
+  if(arr&&arr.length){
+    const first=new Date(arr[0].ts);const mins=first.getHours()*60+first.getMinutes();
+    let best=null,bd=1e9;
+    unitShifts().forEach(s=>{const p=(s.start_t||'0:0').split(':');let diff=Math.abs((+p[0])*60+(+p[1]||0)-mins);diff=Math.min(diff,1440-diff);
+      if(diff<bd){bd=diff;best=s;}});
+    return best;
+  }
+  return null;
+}
+// Valor da diária do dia: turno (seg–sex ou sáb/dom); se o turno não tiver valor, cai na diária fixa do cadastro
+function diariaValue(emp,day,arr){
+  const d=new Date(day+'T12:00');const wk=d.getDay()===0||d.getDay()===6;
+  const sh=diaristaShiftFor(emp,day,arr);
+  let v=sh?(+((wk?sh.diaria_fds:sh.diaria_sem))||0):0;
+  if(!v)v=+emp.diaria||0;
+  return {v,sh,wk};
+}
+function diaristaWeek(pbd,off){
+  const[s,e]=weekBoundsOff(off);const rows=[];let total=0;
+  const ds=emps.filter(x=>x.role==='diarista'&&(!x.unit_id||x.unit_id===curUnit));
+  ds.forEach(emp=>{
+    let dSem=0,dFds=0,val=0,orfas=0;
+    Object.entries(pbd).forEach(([k,arr])=>{const i=k.indexOf('|');if(k.slice(0,i)!==emp.user_id)return;
+      const day=k.slice(i+1);const dt=new Date(day+'T12:00');if(dt<s||dt>e)return;
+      const r=diariaValue(emp,day,arr);
+      if(r.wk)dFds++;else dSem++;
+      val+=r.v;if(arr.length%2===1)orfas++;});
+    if(dSem+dFds>0){rows.push({emp,dSem,dFds,val,orfas});total+=val;}});
+  return{rows,total,s,e};
+}
+function diaristaTable(w,titulo,destaque){
+  let h=`<div class="sec-title">${titulo} — ${w.s.toLocaleDateString('pt-BR')} a ${w.e.toLocaleDateString('pt-BR')}</div>`;
+  if(!w.rows.length)return h+'<div class="muted">Nenhuma batida de diarista nesta semana.</div>';
+  h+='<div class="card" style="padding:0;overflow:hidden'+(destaque?';border-left:3px solid var(--green)':'')+'"><table><thead><tr><th>Diarista</th><th class="r">Dias úteis</th><th class="r">Sáb/Dom</th><th class="r">A pagar</th></tr></thead><tbody>';
+  w.rows.forEach(d=>h+=`<tr><td>${esc(d.emp.name||d.emp.login)}${d.orfas?' <span title="dias com batida única (sem par entrada/saída) — confira antes de pagar" style="color:var(--red)">⚠ '+d.orfas+' órfã(s)</span>':''}</td><td class="r">${d.dSem}</td><td class="r">${d.dFds}</td><td class="r"><b>${brl2(d.val)}</b></td></tr>`);
+  h+=`<tr><td colspan="3" class="r"><b>Total</b></td><td class="r"><b style="color:var(--green)">${brl2(w.total)}</b></td></tr>`;
+  h+='</tbody></table></div>';
+  return h;
 }
 function renderPonto(){
   const area=document.getElementById('pontoArea');
-  const {dias,total,s,e}=weekDiaristaTotal();
-  let h=`<div class="sec-title">Diaristas — semana ${s.toLocaleDateString('pt-BR')} a ${e.toLocaleDateString('pt-BR')}</div>`;
-  const list=Object.values(dias);
-  if(list.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Diarista</th><th class="r">Dias</th><th class="r">Diária</th><th class="r">A pagar</th></tr></thead><tbody>';
-    list.forEach(d=>h+=`<tr><td>${esc(d.emp.name||d.emp.login)}</td><td class="r">${d.days}</td><td class="r">${brl2(d.emp.diaria)}</td><td class="r"><b>${brl2(d.val)}</b></td></tr>`);
-    h+=`<tr><td colspan="3" class="r"><b>Total a pagar segunda-feira</b></td><td class="r"><b style="color:var(--green)">${brl2(total)}</b></td></tr>`;
-    h+='</tbody></table></div>';}
-  else h+='<div class="muted">Nenhum diarista cadastrado (defina o papel "diarista" e o valor da diária na aba Equipe).</div>';
+  const pbd=punchesByEmpDay();
+  const todayLoc=locDay(new Date());
+  const days=escalaDays(0);const shById={};shifts.forEach(s=>shById[s.id]=s);
+  let h='';
+  // ⚠ Jornadas abertas (dia passado com nº ímpar de batidas)
+  const opens=[];
+  Object.entries(pbd).forEach(([k,arr])=>{const i=k.indexOf('|');const eid=k.slice(0,i),day=k.slice(i+1);
+    if(day<todayLoc&&dayHours(arr).open){const emp=emps.find(x=>x.user_id===eid);
+      if(emp&&(!emp.unit_id||emp.unit_id===curUnit))opens.push({emp,day});}});
+  if(opens.length){h+='<div class="card" style="border-left:3px solid var(--red)"><b>⚠ Jornadas sem saída registrada</b><div class="muted" style="font-size:12px;margin-bottom:6px">Corrija no "Ajuste manual de ponto" abaixo — essas horas não entram no cálculo até ter saída.</div>';
+    opens.sort((a,b)=>a.day<b.day?1:-1).slice(0,12).forEach(o=>h+=`<div class="pl"><span>${esc(o.emp.name||o.emp.login)}</span><b>${o.day.split('-').reverse().join('/')}</b></div>`);
+    h+='</div>';}
+  // Funcionários — escala planejada × ponto real (semana atual)
+  const funcs=emps.filter(x=>x.role==='funcionario'&&(!x.unit_id||x.unit_id===curUnit));
+  if(funcs.length){
+    h+='<div class="sec-title">Funcionários — escala × ponto (semana atual)</div><div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Funcionário</th><th class="r">Escalado</th><th class="r">Trabalhou</th><th class="r">Faltas</th><th class="r">Horas</th></tr></thead><tbody>';
+    funcs.forEach(f=>{
+      let nEsc=0,worked=0,faltas=0,ms=0;
+      days.forEach(d=>{const ds=dstr(d);const v=schedule[f.user_id+'|'+ds]||'';const arr=pbd[f.user_id+'|'+ds];
+        if(shById[v])nEsc++;
+        if(arr){worked++;ms+=dayHours(arr).ms;}
+        if(shById[v]&&!arr&&ds<todayLoc)faltas++;});
+      h+=`<tr><td><b>${esc(f.name||f.login)}</b><div class="bl muted">${esc(f.cargo||'')}</div></td><td class="r">${nEsc} dia${nEsc!==1?'s':''}</td><td class="r">${worked} dia${worked!==1?'s':''}</td><td class="r">${faltas?'<b style="color:var(--red)">'+faltas+'</b>':'0'}</td><td class="r"><b>${fmtH(ms)}</b></td></tr>`;});
+    h+='</tbody></table></div><div class="hint">Falta = dia já passado em que estava escalado num turno e não bateu ponto. Horas = pares entrada→saída somados.</div>';
+  }
+  // Diaristas — fechamento de segunda: semana encerrada (a pagar) + semana em andamento
+  const temDiarista=emps.some(x=>x.role==='diarista'&&(!x.unit_id||x.unit_id===curUnit));
+  if(temDiarista){
+    h+=diaristaTable(diaristaWeek(pbd,-1),'💰 Fechamento — semana encerrada (pagar na segunda)',true);
+    h+=diaristaTable(diaristaWeek(pbd,0),'Semana em andamento (parcial)',false);
+    h+='<div class="hint">Valor do dia = diária do TURNO do diarista (seg–sex ou sáb/dom, cadastradas na aba Escala). O turno vem da escala do dia, do turno padrão do cadastro ou do horário da 1ª batida.</div>';
+  } else h+='<div class="muted">Nenhum diarista cadastrado (defina o papel "diarista" na aba Equipe e as diárias por turno na aba Escala).</div>';
+  // Ajuste manual (gestor)
+  const empOpts=emps.filter(x=>!x.unit_id||x.unit_id===curUnit).map(x=>`<option value="${x.user_id}">${esc(x.name||x.login)}</option>`).join('');
+  if(empOpts){h+=`<div class="sec-title">Ajuste manual de ponto</div><div class="card"><div class="addbar">
+    <select id="mpEmp" style="flex:2">${empOpts}</select>
+    <input id="mpDate" type="date" value="${todayLoc}" style="max-width:150px">
+    <input id="mpTime" type="time" value="18:00" style="max-width:110px">
+    <select id="mpType" style="max-width:130px"><option value="in">Entrada</option><option value="out">Saída</option></select>
+    <button class="primary" onclick="addPunchManual()">＋ Registrar</button></div>
+    <div class="hint">Use para corrigir esquecimentos (ex.: saída não batida). Fica registrada como ajuste do gestor.</div></div>`;}
+  // Últimas batidas
   h+='<div class="sec-title">Últimas batidas</div>';
   const recent=[...punches].sort((a,b)=>new Date(b.ts)-new Date(a.ts)).slice(0,30);
-  if(recent.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Quem</th><th>Tipo</th><th class="r">Data/hora</th></tr></thead><tbody>';
+  if(recent.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Quem</th><th>Tipo</th><th class="r">Data/hora</th><th></th></tr></thead><tbody>';
     recent.forEach(p=>{const emp=emps.find(x=>x.user_id===p.employee_id);
-      h+=`<tr><td>${esc(emp?emp.name||emp.login:'—')}</td><td>${p.type==='in'?'🟢 Entrada':'🔴 Saída'}</td><td class="r">${new Date(p.ts).toLocaleString('pt-BR')}</td></tr>`;});
+      h+=`<tr><td>${esc(emp?emp.name||emp.login:'—')}${p.device==='ajuste-gestor'?' <span class="muted" style="font-size:11px">(ajuste)</span>':''}</td><td>${p.type==='in'?'🟢 Entrada':'🔴 Saída'}</td><td class="r">${new Date(p.ts).toLocaleString('pt-BR')}</td><td><button class="sm" onclick="delPunch('${p.id}')">🗑</button></td></tr>`;});
     h+='</tbody></table></div>';}
   else h+='<div class="muted">Nenhuma batida registrada ainda.</div>';
   area.innerHTML=h;
+}
+async function addPunchManual(){
+  const eid=document.getElementById('mpEmp').value,d=document.getElementById('mpDate').value,
+    t=document.getElementById('mpTime').value,ty=document.getElementById('mpType').value;
+  if(!eid||!d||!t)return alert('Preencha funcionário, data e hora.');
+  const ts=new Date(d+'T'+t).toISOString();
+  const {error}=await sb.from('punches').insert({employee_id:eid,type:ty,ts,device:'ajuste-gestor'});
+  if(error)return alert('Erro ao registrar: '+error.message);
+  await loadAll();renderPonto();
+}
+async function delPunch(id){
+  if(!confirm('Excluir esta batida? Esta ação não volta.'))return;
+  const {error}=await sb.from('punches').delete().eq('id',id);
+  if(error)return alert('Erro ao excluir: '+error.message);
+  await loadAll();renderPonto();
 }
 
 /* ===================== EQUIPE ===================== */
@@ -1239,14 +1429,16 @@ function renderEquipe(){
     <div class="hint">O funcionário entra na tela <b>👤 Equipe</b> usando o <b>login</b> e o <b>PIN</b> definidos aqui.</div></div>`;
   h+='<div class="sec-title">Equipe cadastrada</div>';
   const list=emps.filter(e=>!e.unit_id||e.unit_id===curUnit);
-  if(list.length){h+='<div class="card" style="padding:0;overflow:hidden"><table><thead><tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Papel</th><th class="r">Diária</th><th>Ações</th></tr></thead><tbody>';
+  if(list.length){h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Papel</th><th>Turno padrão</th><th class="r">Diária fixa*</th><th>Ações</th></tr></thead><tbody>';
+    const ushOpts=e=>'<option value="">— auto —</option>'+unitShifts().map(s=>`<option value="${s.id}" ${e.work_shift===s.id?'selected':''}>${esc(s.label)}</option>`).join('');
     list.forEach(e=>{h+=`<tr>
       <td>${esc(e.name||'—')}</td><td class="muted">${esc(e.login||'—')}</td><td>${esc(e.cargo||'—')}</td>
       <td><select onchange="setRole('${e.user_id}',this.value)" style="width:auto;padding:5px">
         ${['funcionario','diarista'].map(r=>`<option value="${r}" ${e.role===r?'selected':''}>${r}</option>`).join('')}</select></td>
+      <td><select onchange="setWorkShift('${e.user_id}',this.value)" style="width:auto;padding:5px">${ushOpts(e)}</select></td>
       <td class="r"><input value="${e.diaria||0}" style="width:80px;text-align:right" onchange="setDiaria('${e.user_id}',this.value)"></td>
       <td><button class="sm" onclick="resetPin('${e.user_id}')">PIN</button> <button class="sm" onclick="delEmp('${e.user_id}')">🗑</button></td></tr>`;});
-    h+='</tbody></table></div>';}
+    h+='</tbody></table></div><div class="hint">*Diária fixa só é usada se o turno do diarista não tiver diária cadastrada (aba Escala → Turnos & diárias). Turno padrão "— auto —" = detecta pelo horário da 1ª batida.</div>';}
   else h+='<div class="muted">Nenhum funcionário ainda. Cadastre acima.</div>';
   area.innerHTML=h;
 }
@@ -1270,6 +1462,7 @@ async function resetPin(id){const pin=prompt('Novo PIN (4 a 6 dígitos):');if(!p
   alert('PIN atualizado.');
 }
 async function setRole(id,r){await sb.from('profiles').update({role:r}).eq('user_id',id);await loadAll();renderEquipe();renderPonto();renderOverview();}
+async function setWorkShift(id,v){await sb.from('profiles').update({work_shift:v||null}).eq('user_id',id);await loadAll();renderEquipe();renderPonto();}
 async function setDiaria(id,v){await sb.from('profiles').update({diaria:parseFloat(v.replace(',','.'))||0}).eq('user_id',id);await loadAll();renderEquipe();renderPonto();renderOverview();}
 
 /* ===================== FINANCEIRO ===================== */
@@ -1488,8 +1681,8 @@ function tickClock(){const n=new Date();document.getElementById('clockTime').tex
   `${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')}`;}
 function getGeo(){return new Promise(res=>{if(!navigator.geolocation)return res(null);
   navigator.geolocation.getCurrentPosition(p=>res({lat:p.coords.latitude,lng:p.coords.longitude,accuracy:p.coords.accuracy}),()=>res(null),{enableHighAccuracy:true,timeout:8000,maximumAge:0});});}
-function todayPunches(){const t=new Date().toISOString().slice(0,10);
-  return punches.filter(p=>p.employee_id===session.empId&&p.ts.slice(0,10)===t).sort((a,b)=>new Date(a.ts)-new Date(b.ts));}
+function todayPunches(){const t=locDay(new Date());
+  return punches.filter(p=>p.employee_id===session.empId&&locDay(p.ts)===t).sort((a,b)=>new Date(a.ts)-new Date(b.ts));}
 function isWorking(){const a=todayPunches();return a.length%2===1;}
 async function clockToggle(){
   const btn=document.getElementById('btnPunch');const old=btn.textContent;btn.disabled=true;btn.textContent='Registrando…';
