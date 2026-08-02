@@ -1445,9 +1445,9 @@ function diaristaWeek(pbd,off){
 function diaristaTable(w,titulo,destaque){
   let h=`<div class="sec-title">${titulo} — ${w.s.toLocaleDateString('pt-BR')} a ${w.e.toLocaleDateString('pt-BR')}</div>`;
   if(!w.rows.length)return h+'<div class="muted">Nenhuma batida de diarista nesta semana.</div>';
-  h+='<div class="card" style="padding:0;overflow:hidden'+(destaque?';border-left:3px solid var(--green)':'')+'"><table><thead><tr><th>Diarista</th><th class="r">Dias úteis</th><th class="r">Sáb/Dom</th><th class="r">A pagar</th></tr></thead><tbody>';
-  w.rows.forEach(d=>h+=`<tr><td>${esc(d.emp.name||d.emp.login)}${d.orfas?' <span title="dias com batida única (sem par entrada/saída) — confira antes de pagar" style="color:var(--red)">⚠ '+d.orfas+' órfã(s)</span>':''}</td><td class="r">${d.dSem}</td><td class="r">${d.dFds}</td><td class="r"><b>${brl2(d.val)}</b></td></tr>`);
-  h+=`<tr><td colspan="3" class="r"><b>Total</b></td><td class="r"><b style="color:var(--green)">${brl2(w.total)}</b></td></tr>`;
+  h+='<div class="card" style="padding:0;overflow:auto'+(destaque?';border-left:3px solid var(--green)':'')+'"><table><thead><tr><th>Diarista</th><th>PIX</th><th class="r">Dias úteis</th><th class="r">Sáb/Dom</th><th class="r">A pagar</th></tr></thead><tbody>';
+  w.rows.forEach(d=>h+=`<tr><td>${esc(d.emp.name||d.emp.login)}${d.orfas?' <span title="dias com batida única (sem par entrada/saída) — confira antes de pagar" style="color:var(--red)">⚠ '+d.orfas+' órfã(s)</span>':''}</td><td class="muted" style="font-size:12px">${d.emp.pix?esc(d.emp.pix):'<span style="color:var(--red)">cadastrar</span>'}</td><td class="r">${d.dSem}</td><td class="r">${d.dFds}</td><td class="r"><b>${brl2(d.val)}</b></td></tr>`);
+  h+=`<tr><td colspan="4" class="r"><b>Total</b></td><td class="r"><b style="color:var(--green)">${brl2(w.total)}</b></td></tr>`;
   h+='</tbody></table></div>';
   return h;
 }
@@ -1593,6 +1593,11 @@ function renderEquipe(){
     </div>
     <button class="primary full" style="margin-top:12px" onclick="createEmp()">Cadastrar colaborador</button>
     <div class="hint">O colaborador entra na tela <b>👤 Equipe</b> com o <b>login</b> e o <b>PIN</b>. Entrada/saída definem a jornada do banco de horas (se vazios, vale o horário do turno). *A diária normal vem do turno (aba Escala); esta só é usada se o turno não tiver valor.</div></div>`;
+  // 🎂 aniversariantes do mês
+  {const m=new Date().getMonth()+1;
+   const nivers=emps.filter(x=>(!x.unit_id||x.unit_id===curUnit)&&x.nascimento&&+x.nascimento.slice(5,7)===m)
+     .sort((a,b)=>a.nascimento.slice(8,10)<b.nascimento.slice(8,10)?-1:1);
+   if(nivers.length)h+='<div class="card" style="border-left:3px solid var(--gold,#9C7A3C)">🎂 <b>Aniversariantes de '+MESES[m-1]+':</b> '+nivers.map(x=>esc((x.name||x.login).split(' ')[0])+' (dia '+(+x.nascimento.slice(8,10))+')').join(' · ')+'</div>';}
   h+='<div class="sec-title">Equipe cadastrada</div>';
   const list=emps.filter(e=>!e.unit_id||e.unit_id===curUnit);
   if(list.length){
@@ -1614,9 +1619,9 @@ function renderEquipe(){
         <div class="muted" style="font-size:12px;margin-top:10px;display:flex;flex-direction:column;gap:3px">
           <span>🕐 ${horario}${sh?' · '+esc(sh.label):''}</span>
           <span>💰 ${pago}</span>
-          <span>🔑 login: <b>${esc(e.login||'—')}</b></span>
+          <span>🔑 login: <b>${esc(e.login||'—')}</b>${e.telefone?' · 📱 '+esc(e.telefone):''}</span>
         </div>
-        <div class="hint" style="margin-top:8px">clique para editar ✏️</div>
+        <div class="hint" style="margin-top:8px">${(!e.cpf||!e.telefone||!e.admissao)?'<span style="color:var(--red)">⚠ ficha incompleta ('+[!e.cpf?'CPF':null,!e.telefone?'telefone':null,!e.admissao?'admissão':null].filter(Boolean).join(', ')+')</span> · ':''}clique para editar ✏️</div>
       </div>`;});
     h+='</div>';
   }
@@ -1818,6 +1823,18 @@ function openEmp(id){
       <div><label class="fld">Diária fixa R$ (fallback)</label><input id="emDiaria" value="${e.diaria||0}"></div>
     </div>
     <div class="hint" style="margin-top:8px">Entrada/saída definem a jornada do banco de horas (vazios = horário do turno). A diária do diarista vem do turno (aba Escala); a fixa só entra se o turno não tiver valor.</div>
+    <div class="sec-title">📋 Dados pessoais e contratuais${e.admissao?(' <span class="muted" style="font-weight:400;font-size:12px">· na casa desde '+new Date(e.admissao+'T12:00').toLocaleDateString('pt-BR')+'</span>'):''}</div>
+    <div class="grid g3">
+      <div><label class="fld">CPF</label><input id="emCpf" value="${esc(e.cpf||'')}" placeholder="000.000.000-00"></div>
+      <div><label class="fld">Nascimento</label><input id="emNasc" type="date" value="${e.nascimento||''}"></div>
+      <div><label class="fld">Telefone/WhatsApp</label><input id="emTel" value="${esc(e.telefone||'')}" placeholder="(67) 9…"></div>
+      <div><label class="fld">Data de admissão</label><input id="emAdm" type="date" value="${e.admissao||''}"></div>
+      <div><label class="fld">Chave PIX (pagamentos)</label><input id="emPix" value="${esc(e.pix||'')}" placeholder="CPF, celular ou e-mail"></div>
+      <div><label class="fld">Endereço</label><input id="emEnd" value="${esc(e.endereco||'')}" placeholder="rua, nº, bairro"></div>
+      <div><label class="fld">Contato de emergência</label><input id="emEmgN" value="${esc(e.emergencia_nome||'')}" placeholder="nome (parentesco)"></div>
+      <div><label class="fld">Tel. de emergência</label><input id="emEmgT" value="${esc(e.emergencia_tel||'')}" placeholder="(67) 9…"></div>
+      <div><label class="fld">Observações</label><input id="emObs" value="${esc(e.obs||'')}" placeholder="uniforme, restrições, acordos…"></div>
+    </div>
     <div id="emGA"><div class="muted" style="margin-top:10px">carregando metas e prêmios…</div></div>
     <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
       <button class="primary" onclick="saveEmpModal('${e.user_id}')">💾 Salvar alterações</button>
@@ -1832,7 +1849,10 @@ async function saveEmpModal(id){
   const g=x=>document.getElementById(x).value;
   const o={name:g('emNome').trim(),cargo:g('emCargo').trim(),role:g('emRole'),unit_id:g('emUnit')||null,
     work_shift:g('emShift')||null,color:g('emColor'),entrada:g('emEnt')||null,saida:g('emSai')||null,
-    salario:parseFloat((g('emSalario')||'0').replace(',','.'))||0,diaria:parseFloat((g('emDiaria')||'0').replace(',','.'))||0};
+    salario:parseFloat((g('emSalario')||'0').replace(',','.'))||0,diaria:parseFloat((g('emDiaria')||'0').replace(',','.'))||0,
+    cpf:g('emCpf').trim()||null,nascimento:g('emNasc')||null,telefone:g('emTel').trim()||null,
+    admissao:g('emAdm')||null,pix:g('emPix').trim()||null,endereco:g('emEnd').trim()||null,
+    emergencia_nome:g('emEmgN').trim()||null,emergencia_tel:g('emEmgT').trim()||null,obs:g('emObs').trim()||null};
   if(!o.name)return alert('O nome não pode ficar vazio.');
   const {error}=await sb.from('profiles').update(o).eq('user_id',id);
   if(error)return alert('Erro ao salvar: '+error.message);
