@@ -670,7 +670,7 @@ async function enterFromUser(user,expected){
   if(expected==='admin'&&!['gestor','socio'].includes(prof.role)){showLoginMsg('Esta conta não é de gestor. Use a aba 👤 Equipe.');await sb.auth.signOut();return false;}
   if(expected==='emp'&&prof.role==='gestor'){showLoginMsg('Conta de gestor: clique em 🛠️ Gestor.');await sb.auth.signOut();return false;}
   profile=prof;
-  session=prof.role==='gestor'?{role:'admin'}:{role:'emp',empId:user.id};
+  session=['gestor','socio'].includes(prof.role)?{role:'admin'}:{role:'emp',empId:user.id};
   await applySession();
   return true;
 }
@@ -701,6 +701,8 @@ function subscribeRealtime(cb){
     .on('postgres_changes',{event:'*',schema:'public',table:'tasks'},cb)
     .on('postgres_changes',{event:'*',schema:'public',table:'goals'},cb)
     .on('postgres_changes',{event:'*',schema:'public',table:'profiles'},cb)
+    .on('postgres_changes',{event:'*',schema:'public',table:'emp_tasks'},cb)
+    .on('postgres_changes',{event:'*',schema:'public',table:'emp_task_done'},cb)
     .subscribe();
 }
 async function applySession(){
@@ -775,7 +777,7 @@ async function loadEmpData(){
 
 /* ===================== TABS ===================== */
 function bindTabs(){
-  try{if(session&&session.role==='socio'){const b=document.querySelector('#adminTabs button[data-t="equipe"]');if(b)b.style.display='none';const g=document.getElementById('subEq');if(g)g.style.display='none';const bb=document.querySelector('.bottomnav button[data-bn="equipe"]');if(bb)bb.style.display='none';}}catch(e){}
+  try{if(profile&&profile.role==='socio'){const b=document.querySelector('#adminTabs button[data-t="equipe"]');if(b)b.style.display='none';const g=document.getElementById('subEq');if(g)g.style.display='none';const bb=document.querySelector('.bottomnav button[data-bn="equipe"]');if(bb)bb.style.display='none';}}catch(e){}
   document.querySelectorAll('#adminTabs button').forEach(b=>b.onclick=()=>{
     document.querySelectorAll('#adminTabs button').forEach(x=>x.classList.remove('active'));
     document.querySelectorAll('#adminApp .pane').forEach(x=>x.classList.remove('active'));
@@ -799,7 +801,7 @@ function showFin(name){
   if(name==='fcontas')fcRender();
   if(name==='fcomp')fpRender();
 }
-function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas();renderEscala();renderPonto();renderEquipe();renderHist();}
+function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas();renderEscala();renderPonto();renderEquipe();renderHist();try{renderChecklist();}catch(e){}}
 
 /* ===================== OVERVIEW ===================== */
 function fechCardGap(){
@@ -1566,9 +1568,10 @@ function renderEquipe(){
       const pago=e.role==='diarista'
         ?(sh&&(+sh.diaria_sem||+sh.diaria_fds)?brl2(sh.diaria_sem)+' / '+brl2(sh.diaria_fds)+' fds':((+e.diaria)?brl2(e.diaria)+'/dia':'<span style="color:var(--red)">sem diária</span>'))
         :((+e.salario)?brl2(e.salario)+'/mês':'<span style="color:var(--red)">sem salário</span>');
+      const avat=e.photo_url?`<img src="${e.photo_url}" style="width:100%;height:100%;object-fit:cover">`:ini;
       h+=`<div class="card" style="cursor:pointer" onclick="openEmp('${e.user_id}')">
         <div style="display:flex;align-items:center;gap:10px">
-          <div style="width:40px;height:40px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:${e.color||'#2D6A4F'}">${ini}</div>
+          <div style="width:40px;height:40px;border-radius:50%;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:${e.color||'#2D6A4F'}">${avat}</div>
           <div style="min-width:0"><b>${esc(e.name||e.login||'—')}</b><div class="bl muted">${esc(e.cargo||'—')} · ${e.role==='diarista'?'Diarista':'CLT'}</div></div>
         </div>
         <div class="muted" style="font-size:12px;margin-top:10px;display:flex;flex-direction:column;gap:3px">
@@ -1698,7 +1701,7 @@ function openEmp(id){
   const m=document.getElementById('empModal');
   m.innerHTML=`
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-      <div style="width:46px;height:46px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff;background:${e.color||'#2D6A4F'}">${(e.name||e.login||'?').trim()[0].toUpperCase()}</div>
+      <div style="width:46px;height:46px;border-radius:50%;overflow:hidden;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff;background:${e.color||'#2D6A4F'}">${e.photo_url?`<img src="${e.photo_url}" style="width:100%;height:100%;object-fit:cover">`:(e.name||e.login||'?').trim()[0].toUpperCase()}</div>
       <div><b style="font-size:17px">${esc(e.name||e.login)}</b><div class="muted" style="font-size:12px">login de ponto: <b>${esc(e.login||'—')}</b></div></div>
       <span style="flex:1"></span>
       <button class="sm" onclick="closeEmp()">✕</button>
@@ -2044,7 +2047,16 @@ function renderEmployee(){
   document.getElementById('clockDate').textContent=n.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
   tickClock();
   const working=isWorking();
-  document.getElementById('clockStatus').innerHTML=working?'<span class="pill" style="background:var(--goodbg);color:var(--greenl)">🟢 Trabalhando</span>':'<span class="pill">⚪ Fora do expediente</span>';
+  // horas trabalhadas hoje (pares fechados + par aberto até agora)
+  const tp=todayPunches();let tms=0;
+  for(let i=0;i<tp.length;i++){
+    if(tp[i].type==='in'){
+      if(i+1<tp.length&&tp[i+1].type==='out'){tms+=new Date(tp[i+1].ts)-new Date(tp[i].ts);i++;}
+      else if(i===tp.length-1&&working){tms+=Date.now()-new Date(tp[i].ts);}
+    }
+  }
+  const htxt=tms?(' · '+Math.floor(tms/3600000)+'h'+String(Math.round(tms/60000)%60).padStart(2,'0')+' hoje'):'';
+  document.getElementById('clockStatus').innerHTML=working?'<span class="pill" style="background:var(--goodbg);color:var(--greenl)">🟢 Trabalhando'+htxt+'</span>':'<span class="pill">⚪ Fora do expediente'+htxt+'</span>';
   const btn=document.getElementById('btnPunch');btn.className='btn-punch '+(working?'out':'in');btn.textContent=working?'🔴 Bater SAÍDA':'🟢 Bater ENTRADA';
   const arr=todayPunches();let pt='';
   if(arr.length){pt='<div style="font-weight:600;margin:8px 0 4px">Hoje</div>';
@@ -2065,7 +2077,7 @@ let _wired=false;
   const {data:{session:s}}=await sb.auth.getSession();
   if(s?.user){
     const {data:prof}=await sb.from('profiles').select('*').eq('user_id',s.user.id).maybeSingle();
-    if(prof){profile=prof;session=prof.role==='gestor'?{role:'admin'}:{role:'emp',empId:s.user.id};}
+    if(prof){profile=prof;session=['gestor','socio'].includes(prof.role)?{role:'admin'}:{role:'emp',empId:s.user.id};}
     else{await sb.auth.signOut();}
   }
   await applySession();
