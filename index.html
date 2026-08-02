@@ -564,6 +564,9 @@ display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-s
 <div id="goalOverlay" class="modal-bg" onclick="if(event.target===this)closeGoal()">
   <div class="modal" style="max-width:720px;max-height:85vh;overflow:auto" id="goalModal"></div>
 </div>
+<div id="empOverlay" class="modal-bg" onclick="if(event.target===this)closeEmp()">
+  <div class="modal" style="max-width:680px;max-height:88vh;overflow:auto" id="empModal"></div>
+</div>
 
 <script>
 /* ===================== CONFIG ===================== */
@@ -1528,19 +1531,30 @@ function renderEquipe(){
     <div class="hint">O colaborador entra na tela <b>👤 Equipe</b> com o <b>login</b> e o <b>PIN</b>. Entrada/saída definem a jornada do banco de horas (se vazios, vale o horário do turno). *A diária normal vem do turno (aba Escala); esta só é usada se o turno não tiver valor.</div></div>`;
   h+='<div class="sec-title">Equipe cadastrada</div>';
   const list=emps.filter(e=>!e.unit_id||e.unit_id===curUnit);
-  if(list.length){h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Nome</th><th>Login</th><th>Cargo</th><th>Papel</th><th>Turno padrão</th><th>Entrada</th><th>Saída</th><th class="r">Salário R$ (CLT)</th><th class="r">Diária fixa*</th><th>Ações</th></tr></thead><tbody>';
-    const ushOpts=e=>'<option value="">— auto —</option>'+unitShifts().map(s=>`<option value="${s.id}" ${e.work_shift===s.id?'selected':''}>${esc(s.label)}</option>`).join('');
-    list.forEach(e=>{h+=`<tr>
-      <td>${esc(e.name||'—')}</td><td class="muted">${esc(e.login||'—')}</td><td>${esc(e.cargo||'—')}</td>
-      <td><select onchange="setRole('${e.user_id}',this.value)" style="width:auto;padding:5px">
-        ${['funcionario','diarista'].map(r=>`<option value="${r}" ${e.role===r?'selected':''}>${r}</option>`).join('')}</select></td>
-      <td><select onchange="setWorkShift('${e.user_id}',this.value)" style="width:auto;padding:5px">${ushOpts(e)}</select></td>
-      <td><input type="time" value="${e.entrada||''}" style="width:92px" onchange="setHorario('${e.user_id}','entrada',this.value)"></td>
-      <td><input type="time" value="${e.saida||''}" style="width:92px" onchange="setHorario('${e.user_id}','saida',this.value)"></td>
-      <td class="r"><input value="${e.salario||0}" style="width:90px;text-align:right" onchange="setSalario('${e.user_id}',this.value)"></td>
-      <td class="r"><input value="${e.diaria||0}" style="width:80px;text-align:right" onchange="setDiaria('${e.user_id}',this.value)"></td>
-      <td><button class="sm" onclick="resetPin('${e.user_id}')">PIN</button> <button class="sm" onclick="delEmp('${e.user_id}')">🗑</button></td></tr>`;});
-    h+='</tbody></table></div><div class="hint">Entrada/Saída = jornada contratual individual, usada no banco de horas (se vazias, vale o horário do turno padrão). Salário = mensal CLT (hora = salário÷220; extra +50%). *Diária fixa só é usada se o turno do diarista não tiver diária cadastrada (aba Escala → Turnos & diárias). Turno padrão "— auto —" = detecta pelo horário da 1ª batida.</div>';}
+  if(list.length){
+    const shById={};shifts.forEach(s=>shById[s.id]=s);
+    h+='<div class="grid g3">';
+    list.forEach(e=>{
+      const ini=(e.name||e.login||'?').trim()[0].toUpperCase();
+      const sh=shById[e.work_shift];
+      const horario=(e.entrada&&e.saida)?e.entrada+'–'+e.saida:(sh?sh.start_t+'–'+sh.end_t:'—');
+      const pago=e.role==='diarista'
+        ?(sh&&(+sh.diaria_sem||+sh.diaria_fds)?brl2(sh.diaria_sem)+' / '+brl2(sh.diaria_fds)+' fds':((+e.diaria)?brl2(e.diaria)+'/dia':'<span style="color:var(--red)">sem diária</span>'))
+        :((+e.salario)?brl2(e.salario)+'/mês':'<span style="color:var(--red)">sem salário</span>');
+      h+=`<div class="card" style="cursor:pointer" onclick="openEmp('${e.user_id}')">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:40px;height:40px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:${e.color||'#2D6A4F'}">${ini}</div>
+          <div style="min-width:0"><b>${esc(e.name||e.login||'—')}</b><div class="bl muted">${esc(e.cargo||'—')} · ${e.role==='diarista'?'Diarista':'CLT'}</div></div>
+        </div>
+        <div class="muted" style="font-size:12px;margin-top:10px;display:flex;flex-direction:column;gap:3px">
+          <span>🕐 ${horario}${sh?' · '+esc(sh.label):''}</span>
+          <span>💰 ${pago}</span>
+          <span>🔑 login: <b>${esc(e.login||'—')}</b></span>
+        </div>
+        <div class="hint" style="margin-top:8px">clique para editar ✏️</div>
+      </div>`;});
+    h+='</div>';
+  }
   else h+='<div class="muted">Nenhum funcionário ainda. Cadastre acima.</div>';
   area.innerHTML=h;
 }
@@ -1576,6 +1590,54 @@ async function setRole(id,r){await sb.from('profiles').update({role:r}).eq('user
 async function setWorkShift(id,v){await sb.from('profiles').update({work_shift:v||null}).eq('user_id',id);await loadAll();renderEquipe();renderPonto();}
 async function setSalario(id,v){await sb.from('profiles').update({salario:parseFloat((v||'0').toString().replace(',','.'))||0}).eq('user_id',id);await loadAll();renderEquipe();renderPonto();}
 async function setHorario(id,f,v){const o={};o[f]=v||null;await sb.from('profiles').update(o).eq('user_id',id);await loadAll();renderEquipe();renderPonto();}
+
+/* ---- Ficha do colaborador (card clicável → pop-up de edição) ---- */
+function closeEmp(){document.getElementById('empOverlay').classList.remove('show');}
+function openEmp(id){
+  const e=emps.find(x=>x.user_id===id);if(!e)return;
+  const unitOpts=units.map(u=>`<option value="${u.id}" ${u.id===(e.unit_id||curUnit)?'selected':''}>${esc(u.name)}</option>`).join('');
+  const shOpts='<option value="">— auto (pela 1ª batida) —</option>'+unitShifts().map(s=>`<option value="${s.id}" ${e.work_shift===s.id?'selected':''}>${esc(s.label)} (${s.start_t}–${s.end_t})</option>`).join('');
+  const m=document.getElementById('empModal');
+  m.innerHTML=`
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <div style="width:46px;height:46px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff;background:${e.color||'#2D6A4F'}">${(e.name||e.login||'?').trim()[0].toUpperCase()}</div>
+      <div><b style="font-size:17px">${esc(e.name||e.login)}</b><div class="muted" style="font-size:12px">login de ponto: <b>${esc(e.login||'—')}</b></div></div>
+      <span style="flex:1"></span>
+      <button class="sm" onclick="closeEmp()">✕</button>
+    </div>
+    <div class="grid g3">
+      <div><label class="fld">Nome</label><input id="emNome" value="${esc(e.name||'')}"></div>
+      <div><label class="fld">Cargo</label><input id="emCargo" value="${esc(e.cargo||'')}"></div>
+      <div><label class="fld">Papel</label><select id="emRole">
+        <option value="funcionario" ${e.role==='funcionario'?'selected':''}>Funcionário (CLT)</option>
+        <option value="diarista" ${e.role==='diarista'?'selected':''}>Diarista</option></select></div>
+      <div><label class="fld">Unidade</label><select id="emUnit">${unitOpts}</select></div>
+      <div><label class="fld">Turno padrão</label><select id="emShift">${shOpts}</select></div>
+      <div><label class="fld">Cor (escala/avatar)</label><input id="emColor" type="color" value="${e.color||'#2D6A4F'}" style="padding:2px;height:38px"></div>
+      <div><label class="fld">Horário de entrada</label><input id="emEnt" type="time" value="${e.entrada||''}"></div>
+      <div><label class="fld">Horário de saída</label><input id="emSai" type="time" value="${e.saida||''}"></div>
+      <div><label class="fld">Salário R$ (se CLT)</label><input id="emSalario" value="${e.salario||0}"></div>
+      <div><label class="fld">Diária fixa R$ (fallback)</label><input id="emDiaria" value="${e.diaria||0}"></div>
+    </div>
+    <div class="hint" style="margin-top:8px">Entrada/saída definem a jornada do banco de horas (vazios = horário do turno). A diária do diarista vem do turno (aba Escala); a fixa só entra se o turno não tiver valor.</div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="primary" onclick="saveEmpModal('${e.user_id}')">💾 Salvar alterações</button>
+      <button class="sm" onclick="resetPin('${e.user_id}')">🔑 Redefinir PIN</button>
+      <span style="flex:1"></span>
+      <button class="sm" onclick="closeEmp();delEmp('${e.user_id}')" style="color:var(--red)">🗑 Excluir colaborador</button>
+    </div>`;
+  document.getElementById('empOverlay').classList.add('show');
+}
+async function saveEmpModal(id){
+  const g=x=>document.getElementById(x).value;
+  const o={name:g('emNome').trim(),cargo:g('emCargo').trim(),role:g('emRole'),unit_id:g('emUnit')||null,
+    work_shift:g('emShift')||null,color:g('emColor'),entrada:g('emEnt')||null,saida:g('emSai')||null,
+    salario:parseFloat((g('emSalario')||'0').replace(',','.'))||0,diaria:parseFloat((g('emDiaria')||'0').replace(',','.'))||0};
+  if(!o.name)return alert('O nome não pode ficar vazio.');
+  const {error}=await sb.from('profiles').update(o).eq('user_id',id);
+  if(error)return alert('Erro ao salvar: '+error.message);
+  closeEmp();await loadAll();renderEquipe();renderEscala();renderPonto();renderOverview();
+}
 async function setDiaria(id,v){await sb.from('profiles').update({diaria:parseFloat(v.replace(',','.'))||0}).eq('user_id',id);await loadAll();renderEquipe();renderPonto();renderOverview();}
 
 /* ===================== FINANCEIRO ===================== */
