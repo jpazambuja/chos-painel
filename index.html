@@ -1379,6 +1379,42 @@ function diaristaTable(w,titulo,destaque){
   h+='</tbody></table></div>';
   return h;
 }
+// Duração prevista de um turno (vira jornada do dia); turno que cruza meia-noite soma 24h
+function shiftDurMs(sh){if(!sh)return 0;
+  const p=t=>{const a=(t||'0:0').split(':');return (+a[0])*60+(+a[1]||0);};
+  let m=p(sh.end_t)-p(sh.start_t);if(m<=0)m+=1440;return m*60000;}
+let pontoMOff=0;
+function bancoHorasBlock(pbd){
+  const funcs=emps.filter(x=>x.role==='funcionario'&&(!x.unit_id||x.unit_id===curUnit));
+  if(!funcs.length)return '';
+  const days=monthDays(pontoMOff);
+  const shById={};shifts.forEach(s=>shById[s.id]=s);
+  const todayLoc=locDay(new Date());
+  const TOL=10*60000; // tolerância de 10 min/dia
+  const mesLbl=MESES[days[0].getMonth()]+' / '+days[0].getFullYear();
+  let h=`<div class="sec-title">⏱ Banco de horas — <span style="text-transform:capitalize">${mesLbl}</span>&nbsp;
+    <button class="sm" onclick="pontoMOff--;renderPonto()">◀</button>
+    ${pontoMOff!==0?'<button class="sm" onclick="pontoMOff=0;renderPonto()">atual</button>':''}
+    <button class="sm" onclick="pontoMOff++;renderPonto()">▶</button></div>`;
+  h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Funcionário</th><th class="r">Horas previstas</th><th class="r">Horas trabalhadas</th><th class="r">Faltas</th><th class="r">Saldo do mês</th></tr></thead><tbody>';
+  funcs.forEach(f=>{
+    let prev=0,trab=0,saldo=0,faltas=0;
+    days.forEach(d=>{const ds=dstr(d);if(ds>=todayLoc)return; // só dias já fechados
+      const v=schedule[f.user_id+'|'+ds]||'';const sh=shById[v];const arr=pbd[f.user_id+'|'+ds];
+      const pMs=sh?shiftDurMs(sh):0;const wMs=arr?dayHours(arr).ms:0;
+      prev+=pMs;trab+=wMs;
+      if(v==='falta'){faltas++;return;}
+      if(pMs&&!arr){faltas++;saldo-=pMs;return;} // escalado e não veio: débito integral
+      let dlt=wMs-pMs;if(Math.abs(dlt)<=TOL)dlt=0;
+      saldo+=dlt;});
+    const pos=saldo>=0;
+    h+=`<tr><td><b>${esc(f.name||f.login)}</b><div class="bl muted">${esc(f.cargo||'')}</div></td>
+      <td class="r">${fmtH(prev)}</td><td class="r">${fmtH(trab)}</td>
+      <td class="r">${faltas?'<b style="color:var(--red)">'+faltas+'</b>':'0'}</td>
+      <td class="r"><b style="color:${pos?'var(--green)':'var(--red)'}">${pos?'+':'−'}${fmtH(Math.abs(saldo))}</b></td></tr>`;});
+  h+='</tbody></table></div><div class="hint">Previstas = soma dos turnos escalados nos dias já fechados do mês. Saldo do dia = trabalhado − previsto, com tolerância de 10 min/dia (variações dentro disso não contam, ref. CLT art. 58). Dia escalado sem nenhuma batida = falta e desconta a jornada inteira do saldo; dia marcado FAL na escala conta como falta sem mexer no saldo. <b>Saldo positivo</b> = horas extras (pagar com adicional ou compensar); <b>negativo</b> = horas que o funcionário deve compensar. Banco de horas com compensação exige acordo escrito — valide o formato com seu contador.</div>';
+  return h;
+}
 function renderPonto(){
   const area=document.getElementById('pontoArea');
   const pbd=punchesByEmpDay();
@@ -1406,6 +1442,7 @@ function renderPonto(){
       h+=`<tr><td><b>${esc(f.name||f.login)}</b><div class="bl muted">${esc(f.cargo||'')}</div></td><td class="r">${nEsc} dia${nEsc!==1?'s':''}</td><td class="r">${worked} dia${worked!==1?'s':''}</td><td class="r">${faltas?'<b style="color:var(--red)">'+faltas+'</b>':'0'}</td><td class="r"><b>${fmtH(ms)}</b></td></tr>`;});
     h+='</tbody></table></div><div class="hint">Falta = dia já passado em que estava escalado num turno e não bateu ponto. Horas = pares entrada→saída somados.</div>';
   }
+  h+=bancoHorasBlock(pbd);
   // Diaristas — fechamento de segunda: semana encerrada (a pagar) + semana em andamento
   const temDiarista=emps.some(x=>x.role==='diarista'&&(!x.unit_id||x.unit_id===curUnit));
   if(temDiarista){
