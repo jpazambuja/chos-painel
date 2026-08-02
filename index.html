@@ -334,6 +334,7 @@ display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-s
         <a class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</a>
         <a class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</a>
         <a class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto &amp; Diaristas</a>
+        <a class="eqsub" data-e="emetas" onclick="showEq('emetas')">Metas da equipe</a>
         <a class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</a>
         <a class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos ao painel</a>
       </div>
@@ -496,25 +497,25 @@ display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-s
 
   <section id="escala" class="pane">
     <h2>Escala</h2>
-    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Escala MENSAL por funcionário. Lance a 1ª semana, use "Repetir no mês todo" e ajuste as folgas. Turnos com diária seg–sex e sáb/dom. Imprima para a equipe.</div>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="emetas" onclick="showEq('emetas')">Metas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Escala MENSAL por funcionário. Lance a 1ª semana, use "Repetir no mês todo" e ajuste as folgas. Turnos com diária seg–sex e sáb/dom. Imprima para a equipe.</div>
     <div id="escalaArea" style="margin-top:12px"></div>
   </section>
 
   <section id="ponto" class="pane">
     <h2>Ponto & Diaristas</h2>
-    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Escala × ponto real, horas, jornadas sem saída e ajuste manual. Fechamento dos diaristas pronto toda segunda: quem bateu ponto e quanto recebe.</div>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="emetas" onclick="showEq('emetas')">Metas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Escala × ponto real, horas, jornadas sem saída e ajuste manual. Fechamento dos diaristas pronto toda segunda: quem bateu ponto e quanto recebe.</div>
     <div id="pontoArea" style="margin-top:12px"></div>
   </section>
 
   <section id="equipe" class="pane">
     <h2>Colaboradores</h2>
-    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Cadastro de quem trabalha na operação: cargo, horário, salário/diária e login de ponto. Acessos ao painel (sócios, contador) ficam na aba Acessos.</div>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="emetas" onclick="showEq('emetas')">Metas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Cadastro de quem trabalha na operação: cargo, horário, salário/diária e login de ponto. Acessos ao painel (sócios, contador) ficam na aba Acessos.</div>
     <div id="equipeArea" style="margin-top:12px"></div>
   </section>
 
   <section id="acessos" class="pane">
     <h2>Acessos ao painel</h2>
-    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Contas de GESTÃO (e-mail + senha): você, sócio, contador e quem mais precisar ver o painel. Não é cadastro de colaborador.</div>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="emetas" onclick="showEq('emetas')">Metas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Contas de GESTÃO (e-mail + senha): você, sócio, contador e quem mais precisar ver o painel. Não é cadastro de colaborador.</div>
     <div class="card" style="margin-top:12px"><div class="sec-title" style="margin-top:0">＋ Criar acesso de gestão</div>
       <div class="grid g4">
         <div><label class="fld">Nome</label><input id="nuNome" placeholder="ex: Contador Fulano"></div>
@@ -531,9 +532,15 @@ display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-s
     <div class="card" id="nuAdmins" style="padding:0;overflow:hidden"></div>
   </section>
 
+  <section id="emetas" class="pane">
+    <h2>Metas da equipe</h2>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="emetas" onclick="showEq('emetas')">Metas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Crie metas para TODOS, por CARGO (gerente, garçom, cozinha…) ou individuais. O colaborador acompanha o progresso e o prêmio no app dele.</div>
+    <div id="emetasArea" style="margin-top:12px"></div>
+  </section>
+
   <section id="checklist" class="pane">
     <h2>Checklist da equipe</h2>
-    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Tarefas diárias da operação. Cada colaborador vê e marca o próprio checklist no app; aqui você cria os itens e acompanha quem fez o quê hoje.</div>
+    <div class="subnav"><button class="eqsub" data-e="equipe" onclick="showEq('equipe')">Colaboradores</button><button class="eqsub" data-e="escala" onclick="showEq('escala')">Escala</button><button class="eqsub" data-e="ponto" onclick="showEq('ponto')">Ponto & Diaristas</button><button class="eqsub" data-e="emetas" onclick="showEq('emetas')">Metas</button><button class="eqsub" data-e="checklist" onclick="showEq('checklist')">Checklist</button><button class="eqsub" data-e="acessos" onclick="showEq('acessos')">Acessos</button></div><div class="sub">Tarefas diárias da operação. Cada colaborador vê e marca o próprio checklist no app; aqui você cria os itens e acompanha quem fez o quê hoje.</div>
     <div id="checklistArea" style="margin-top:12px"></div>
   </section>
     </div><!-- /content -->
@@ -549,19 +556,40 @@ display:flex;align-items:center;justify-content:center;font-family:'Sora',sans-s
 </div>
 
 <!-- ===================== APP FUNCIONÁRIO ===================== -->
-<div id="empApp" class="wrap" style="display:none;max-width:540px;padding-top:calc(18px + env(safe-area-inset-top))">
-  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:11px">
-      <div id="empAvatar" onclick="empPhotoPick()" title="Toque para trocar a foto" style="width:44px;height:44px;border-radius:50%;overflow:hidden;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#fff;background:#2D6A4F">CH</div>
+<style>
+#empApp{max-width:560px}
+.emp-hero{background:linear-gradient(140deg,#14402E,#2D6A4F);border-radius:22px;padding:20px 18px calc(18px);color:#fff;margin-bottom:14px;box-shadow:0 10px 26px rgba(20,64,46,.25)}
+.emp-hero .icon-btn,.emp-hero .sm{color:#fff;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.12)}
+.emp-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:0 0 14px}
+.emp-tile{border-radius:18px;padding:16px 10px;text-align:center;cursor:pointer;transition:transform .12s}
+.emp-tile:active{transform:scale(.96)}
+.emp-tile .ic{width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 8px}
+.emp-tile b{font-size:13px}
+</style>
+<div id="empApp" class="wrap" style="display:none;max-width:560px;padding-top:calc(14px + env(safe-area-inset-top))">
+  <div class="emp-hero">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="empAvatar" onclick="empPhotoPick()" title="Toque para trocar a foto" style="width:52px;height:52px;border-radius:50%;overflow:hidden;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;color:#fff;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.45)">CH</div>
       <input id="empPhotoInput" type="file" accept="image/*" style="display:none" onchange="empPhotoUpload(this)">
-      <div><div style="font-family:'Sora',sans-serif;font-weight:800;letter-spacing:3px;color:var(--heading-ink);font-size:16px">CH.OSEN</div><div class="sub" id="empHi" style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px">—</div></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;opacity:.8">Bem-vindo(a),</div>
+        <div id="empHeroName" style="font-family:'Sora',sans-serif;font-weight:800;font-size:20px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+        <div id="empHi" style="font-size:11px;opacity:.8;text-transform:uppercase;letter-spacing:1.2px">—</div>
+      </div>
+      <div style="display:flex;gap:8px;flex:none">
+        <button class="icon-btn" onclick="toggleTheme()" title="Tema"><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><svg class="ic-sun" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
+        <button class="sm" onclick="logout()">Sair</button>
+      </div>
     </div>
-    <div style="display:flex;gap:8px">
-      <button class="icon-btn" onclick="toggleTheme()" title="Tema"><svg class="ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><svg class="ic-sun" style="display:none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg></button>
-      <button class="sm" onclick="logout()">Sair</button>
-    </div>
+    <div id="empHeroBar" style="margin-top:16px"></div>
   </div>
-  <div class="card" style="text-align:center">
+  <div class="emp-tiles">
+    <div class="card emp-tile" onclick="empScroll('secPonto')"><div class="ic" style="background:#E8F0FE">🕐</div><b>Bater Ponto</b></div>
+    <div class="card emp-tile" onclick="empScroll('secCheck')"><div class="ic" style="background:#E6F6EC">✅</div><b>Checklist</b><div id="tileCheck" class="bl muted" style="font-size:11px"></div></div>
+    <div class="card emp-tile" onclick="empScroll('secEsc')"><div class="ic" style="background:#FFF4D6">📅</div><b>Minha Escala</b></div>
+    <div class="card emp-tile" onclick="empScroll('secMetas','secPrem')"><div class="ic" style="background:#F3E8FF">🏆</div><b>Metas & Prêmios</b></div>
+  </div>
+  <div class="card" id="secPonto" style="text-align:center">
     <div class="sub" id="clockDate">—</div>
     <div class="big-clock" id="clockTime">--:--:--</div>
     <div id="clockStatus" style="margin-top:6px"></div>
@@ -624,7 +652,7 @@ const FICHAS=[
 /* ===================== ESTADO ===================== */
 let session=null, profile=null, units=[], curUnit=null;
 let emps=[], shifts=[], schedule={}, punches=[], tasks=[], goals=[], finance=[], reports=[], bank=[], cardRates=[], fechPdv=[], fechMach=[], fechClose=[], fbResumo=[];
-let empTasks=[], empDone=[], empGoals=[], empAwards=[], ckTasks=[], ckDone=[];
+let empTasks=[], empDone=[], empGoals=[], empAwards=[], ckTasks=[], ckDone=[], egAll=[];
 let clockTimer=null, realtimeCh=null, histChart=null, fechSelPeriod=null;
 
 const brl=v=>'R$ '+(+v||0).toLocaleString('pt-BR',{maximumFractionDigits:0});
@@ -753,11 +781,12 @@ async function loadAll(){
   schedule={}; (sc.data||[]).forEach(r=>schedule[r.employee_id+'|'+r.day]=r.value);
   try{
     const t=new Date();const dloc=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
-    const [ct,cd]=await Promise.all([
+    const [ct,cd,eg]=await Promise.all([
       sb.from('emp_tasks').select('*').order('sort'),
-      sb.from('emp_task_done').select('*').eq('day',dloc)]);
-    ckTasks=ct.data||[];ckDone=cd.data||[];
-  }catch(e){ckTasks=[];ckDone=[];}
+      sb.from('emp_task_done').select('*').eq('day',dloc),
+      sb.from('emp_goals').select('*').order('created_at')]);
+    ckTasks=ct.data||[];ckDone=cd.data||[];egAll=eg.data||[];
+  }catch(e){ckTasks=[];ckDone=[];egAll=[];}
 }
 async function loadEmpData(){
   const today=new Date();const dloc=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
@@ -766,7 +795,8 @@ async function loadEmpData(){
     sb.from('punches').select('*').eq('employee_id',session.empId).order('ts'),
     sb.from('emp_tasks').select('*').eq('active',true).order('sort'),
     sb.from('emp_task_done').select('*').eq('employee_id',session.empId).eq('day',dloc),
-    sb.from('emp_goals').select('*').eq('employee_id',session.empId).order('created_at'),
+    sb.from('emp_goals').select('*').order('created_at'), // RLS entrega: individuais + do cargo + gerais
+
     sb.from('emp_awards').select('*').eq('employee_id',session.empId).order('awarded_at',{ascending:false}),
   ]);
   schedule={};(sc.data||[]).forEach(r=>schedule[r.employee_id+'|'+r.day]=r.value);
@@ -801,7 +831,7 @@ function showFin(name){
   if(name==='fcontas')fcRender();
   if(name==='fcomp')fpRender();
 }
-function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas();renderEscala();renderPonto();renderEquipe();renderHist();try{renderChecklist();}catch(e){}}
+function renderAll(){renderOverview();renderTasks();renderMetas();renderFichas();renderEscala();renderPonto();renderEquipe();renderHist();try{renderChecklist();renderEMetas();}catch(e){}}
 
 /* ===================== OVERVIEW ===================== */
 function fechCardGap(){
@@ -1654,6 +1684,66 @@ async function ckDel(id){
   await loadAll();renderChecklist();
 }
 
+/* ---- Metas da equipe (todos / cargo / individual) ---- */
+function egCargos(){const s=new Set();emps.filter(e=>!e.unit_id||e.unit_id===curUnit).forEach(e=>{if(e.cargo&&e.cargo.trim())s.add(e.cargo.trim());});return[...s].sort();}
+function egOnScope(){
+  const sc=document.getElementById('egScope').value;
+  document.getElementById('egCargoWrap').style.display=sc==='cargo'?'':'none';
+  document.getElementById('egEmpWrap').style.display=sc==='individual'?'':'none';
+}
+function renderEMetas(){
+  const area=document.getElementById('emetasArea');if(!area)return;
+  const cargoOpts=egCargos().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  const empOpts=emps.filter(e=>!e.unit_id||e.unit_id===curUnit).map(e=>`<option value="${e.user_id}">${esc(e.name||e.login)}</option>`).join('');
+  let h=`<div class="card"><div class="sec-title" style="margin-top:0">＋ Nova meta</div>
+    <div class="grid g3">
+      <div><label class="fld">Meta</label><input id="egTitle" placeholder="ex: Ticket médio da noite ≥ R$85"></div>
+      <div><label class="fld">Prêmio</label><input id="egReward" placeholder="ex: R$150 + folga extra"></div>
+      <div><label class="fld">Vale para</label><select id="egScope" onchange="egOnScope()">
+        <option value="todos">Todos os colaboradores</option>
+        <option value="cargo">Um cargo</option>
+        <option value="individual">Uma pessoa</option></select></div>
+      <div id="egCargoWrap" style="display:none"><label class="fld">Cargo</label><select id="egCargo">${cargoOpts||'<option value="">— cadastre cargos nos colaboradores —</option>'}</select></div>
+      <div id="egEmpWrap" style="display:none"><label class="fld">Colaborador</label><select id="egEmp">${empOpts}</select></div>
+      <div><label class="fld">Abrangência</label><select id="egUnit"><option value="unit">Só esta unidade</option><option value="">Grupo todo</option></select></div>
+    </div>
+    <button class="primary full" style="margin-top:12px" onclick="egAdd()">Criar meta</button>
+    <div class="hint">A meta aparece no app de quem ela vale, com barra de progresso e prêmio. Você atualiza o % aqui — 100% marca como concluída.</div></div>`;
+  const list=egAll.filter(g=>!g.unit_id||g.unit_id===curUnit);
+  h+='<div class="sec-title">Metas ativas</div>';
+  if(!list.length)h+='<div class="muted">Nenhuma meta criada ainda.</div>';
+  else{h+='<div class="card" style="padding:0;overflow:auto"><table><thead><tr><th>Meta</th><th>Vale para</th><th>Prêmio</th><th class="r">Progresso</th><th></th></tr></thead><tbody>';
+    list.forEach(g=>{
+      let alvo='<span class="pill">Todos</span>';
+      if(g.scope==='cargo')alvo='<span class="pill">'+esc(g.cargo||'—')+'</span>';
+      else if(g.scope==='individual'){const e=emps.find(x=>x.user_id===g.employee_id);alvo='<span class="pill">👤 '+esc(e?(e.name||e.login):'—')+'</span>';}
+      h+=`<tr style="${g.done?'opacity:.55':''}"><td>${g.done?'✅ ':''}${esc(g.title)}</td><td>${alvo}${g.unit_id?'':' <span class="muted" style="font-size:10px">grupo</span>'}</td>
+        <td class="muted">${esc(g.reward||'—')}</td>
+        <td class="r"><input value="${g.progress||0}" style="width:56px;text-align:right;padding:4px" onchange="egSetProg('${g.id}',this.value)">%</td>
+        <td><button class="sm" onclick="egDel('${g.id}')">🗑</button></td></tr>`;});
+    h+='</tbody></table></div>';}
+  area.innerHTML=h;
+}
+async function egAdd(){
+  const title=val('egTitle');if(!title)return alert('Escreva a meta.');
+  const scope=document.getElementById('egScope').value;
+  const o={title,reward:val('egReward')||null,scope,
+    unit_id:document.getElementById('egUnit').value==='unit'?curUnit:null,
+    cargo:scope==='cargo'?document.getElementById('egCargo').value:null,
+    employee_id:scope==='individual'?document.getElementById('egEmp').value:null};
+  if(scope==='cargo'&&!o.cargo)return alert('Escolha o cargo.');
+  if(scope==='individual'&&!o.employee_id)return alert('Escolha o colaborador.');
+  const {error}=await sb.from('emp_goals').insert(o);
+  if(error)return alert('Erro: '+error.message);
+  await loadAll();renderEMetas();
+}
+async function egSetProg(gid,v){const p=Math.max(0,Math.min(100,parseInt(v)||0));
+  await sb.from('emp_goals').update({progress:p,done:p>=100}).eq('id',gid);
+  await loadAll();renderEMetas();}
+async function egDel(gid){if(!confirm('Excluir esta meta? (some do app de todos os alvos)'))return;
+  await sb.from('emp_goals').delete().eq('id',gid);
+  await loadAll();renderEMetas();}
+
 /* ---- Metas e premiações do colaborador (dentro da ficha) ---- */
 async function loadEmpGA(id){
   const [gl,aw]=await Promise.all([
@@ -1675,7 +1765,7 @@ async function loadEmpGA(id){
   h+=`<div class="addbar" style="margin-top:8px"><input id="emAwT" placeholder="prêmio/bônus (ex: funcionário do mês)" style="flex:2">
     <input id="emAwV" placeholder="valor R$" style="flex:1">
     <button class="sm" onclick="emAddAward('${id}')">＋ Prêmio</button></div>
-  <div class="hint">O colaborador vê metas, progresso e prêmios no app dele. Prêmio em R$ soma no total acumulado que ele acompanha.</div>`;
+  <div class="hint">O colaborador vê metas, progresso e prêmios no app dele. Prêmio em R$ soma no total acumulado que ele acompanha. Aqui ficam só as metas INDIVIDUAIS desta pessoa — metas para todos ou por cargo são criadas em Equipe → Metas.</div>`;
   el.innerHTML=h;
 }
 async function emAddGoal(id){const t=val('emGoalT');if(!t)return alert('Escreva a meta.');
@@ -1974,6 +2064,7 @@ async function clockToggle(){
   }catch(e){alert('Erro ao bater ponto: '+e.message);}
   finally{btn.disabled=false;btn.textContent=old;}
 }
+function empScroll(id,alt){const el=document.getElementById(id)||document.getElementById(alt);if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}
 function empPhotoPick(){document.getElementById('empPhotoInput').click();}
 async function empPhotoUpload(inp){
   const f=inp.files&&inp.files[0];if(!f)return;
@@ -2000,7 +2091,14 @@ function renderEmpExtra(){
   let h='';
   // ✅ Checklist de hoje
   const my=empTasks.filter(t=>(!t.unit_id||!profile.unit_id||t.unit_id===profile.unit_id)&&(!t.employee_id||t.employee_id===uid));
-  h+='<div class="card"><div class="sec-title" style="margin-top:0">✅ Checklist de hoje</div>';
+  // barra do hero + contador do tile
+  {const done=new Set(empDone.map(d=>d.task_id));const nd=my.filter(t=>done.has(t.id)).length;
+   const pct=my.length?Math.round(nd/my.length*100):0;
+   const hb=document.getElementById('empHeroBar');
+   if(hb)hb.innerHTML=my.length?`<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;opacity:.9"><span>Checklist de hoje</span><b>${nd}/${my.length}${pct===100?' 🎉':''}</b></div>
+     <div style="height:8px;border-radius:4px;background:rgba(255,255,255,.22);overflow:hidden"><div style="height:100%;width:${pct}%;background:#F2C94C;border-radius:4px"></div></div>`:'';
+   const tc=document.getElementById('tileCheck');if(tc)tc.textContent=my.length?nd+'/'+my.length:'';}
+  h+='<div class="card" id="secCheck"><div class="sec-title" style="margin-top:0">✅ Checklist de hoje</div>';
   if(!my.length)h+='<div class="muted">Nenhuma tarefa no seu checklist hoje.</div>';
   else{const done=new Set(empDone.map(d=>d.task_id));
     const nd=my.filter(t=>done.has(t.id)).length;
@@ -2012,7 +2110,7 @@ function renderEmpExtra(){
   h+='</div>';
   // 📅 Minha escala
   const shById={};shifts.forEach(s=>shById[s.id]=s);
-  h+='<div class="card"><div class="sec-title" style="margin-top:0">📅 Minha escala — próximos 7 dias</div>';
+  h+='<div class="card" id="secEsc"><div class="sec-title" style="margin-top:0">📅 Minha escala — próximos 7 dias</div>';
   let temEsc=false;
   for(let i=0;i<7;i++){const d=new Date();d.setDate(d.getDate()+i);d.setHours(12,0,0,0);const ds=d.toISOString().slice(0,10);
     const v=schedule[uid+'|'+ds];let lbl='—',col='var(--mut)';
@@ -2024,22 +2122,24 @@ function renderEmpExtra(){
   if(!temEsc)h+='<div class="hint">Escala ainda não lançada para os próximos dias.</div>';
   h+='</div>';
   // 🎯 Metas
-  if(empGoals.length){h+='<div class="card"><div class="sec-title" style="margin-top:0">🎯 Minhas metas</div>';
+  if(empGoals.length){h+='<div class="card" id="secMetas"><div class="sec-title" style="margin-top:0">🎯 Minhas metas</div>';
     empGoals.forEach(g=>{const p=Math.max(0,Math.min(100,+g.progress||0));
-      h+=`<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px"><b>${esc(g.title)}</b><span>${g.done?'✅':p+'%'}</span></div>
+      const tag=g.scope==='todos'?'<span class="pill" style="font-size:10px">equipe</span> ':g.scope==='cargo'?'<span class="pill" style="font-size:10px">'+esc(g.cargo||'cargo')+'</span> ':'';
+      h+=`<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;gap:8px"><b>${tag}${esc(g.title)}</b><span>${g.done?'✅':p+'%'}</span></div>
       ${g.reward?'<div class="muted" style="font-size:12px">🎁 Prêmio: '+esc(g.reward)+'</div>':''}
       <div style="height:8px;border-radius:4px;background:var(--palhal);overflow:hidden;margin-top:5px"><div style="height:100%;width:${p}%;background:var(--green)"></div></div></div>`;});
     h+='</div>';}
   // 🏆 Premiações e bônus
   if(empAwards.length){const tot=empAwards.reduce((s,a)=>s+(+a.amount||0),0);
-    h+='<div class="card"><div class="sec-title" style="margin-top:0">🏆 Minhas premiações e bônus</div>';
+    h+='<div class="card" id="secPrem"><div class="sec-title" style="margin-top:0">🏆 Minhas premiações e bônus</div>';
     empAwards.slice(0,12).forEach(a=>h+=`<div class="pl"><span>${esc(a.title)} <span class="muted" style="font-size:11px">${new Date(a.awarded_at+'T12:00').toLocaleDateString('pt-BR')}</span></span><b style="color:var(--green)">${(+a.amount)?brl2(a.amount):'🏅'}</b></div>`);
     h+=`<div class="pl" style="margin-top:4px"><span><b>Total acumulado</b></span><b style="color:var(--green)">${brl2(tot)}</b></div>`;
     h+='</div>';}
   area.innerHTML=h;
 }
 function renderEmployee(){
-  document.getElementById('empHi').textContent=(profile.name?('Olá, '+profile.name.split(' ')[0]):'Funcionário')+(profile.cargo?' · '+profile.cargo:'');
+  const hn=document.getElementById('empHeroName');if(hn)hn.textContent=profile.name||profile.login||'Funcionário';
+  document.getElementById('empHi').textContent=(profile.cargo||'')+(profile.role==='diarista'?(profile.cargo?' · ':'')+'diarista':'');
   const av=document.getElementById('empAvatar');
   if(av){if(profile.photo_url)av.innerHTML=`<img src="${profile.photo_url}" style="width:100%;height:100%;object-fit:cover">`;
     else{av.style.background=profile.color||'#2D6A4F';av.textContent=(profile.name||'?').trim()[0].toUpperCase();}}
@@ -2448,6 +2548,7 @@ function showEq(name){
   document.querySelectorAll('.eqsub').forEach(b=>b.classList.toggle('active',b.dataset.e===name));
   if(name==='acessos')nuListar();
   if(name==='checklist')renderChecklist();
+  if(name==='emetas')renderEMetas();
 }
 async function nuListar(){
   const el=document.getElementById('nuAdmins');if(!el)return;
@@ -2496,7 +2597,7 @@ function closeDrawer(){const s=document.getElementById('sidebar'),c=document.get
 function bnGo(t){const b=document.querySelector('#adminTabs button[data-t="'+t+'"]');if(b)b.click();closeDrawer();}
 function syncNav(){
   const p=document.querySelector('#adminApp .pane.active');if(!p)return;
-  const fin=['fbancario','fvendas','fdre','fcontas','fcomp','taxas'],eq=['equipe','escala','ponto','acessos','checklist'];
+  const fin=['fbancario','fvendas','fdre','fcontas','fcomp','taxas'],eq=['equipe','escala','ponto','acessos','checklist','emetas'];
   let top=p.id;if(fin.includes(p.id))top='financeiro';else if(eq.includes(p.id))top='equipe';
   document.querySelectorAll('.bottomnav button[data-bn]').forEach(b=>b.classList.toggle('active',b.dataset.bn===top));
   const sf=document.getElementById('subFin'),se=document.getElementById('subEq');
