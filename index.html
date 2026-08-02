@@ -1590,6 +1590,15 @@ function renderEquipe(){
       <div><label class="fld">Horário de saída</label><input id="neSai" type="time"></div>
       <div><label class="fld">Salário R$ (se CLT)</label><input id="neSalario" value="0"></div>
       <div><label class="fld">Diária R$ (se diarista, opcional*)</label><input id="neDiaria" value="0"></div>
+      <div><label class="fld">CPF</label><input id="neCpf" placeholder="000.000.000-00"></div>
+      <div><label class="fld">Nascimento</label><input id="neNasc" type="date"></div>
+      <div><label class="fld">Telefone/WhatsApp</label><input id="neTel" placeholder="(67) 9…"></div>
+      <div><label class="fld">Data de admissão</label><input id="neAdm" type="date"></div>
+      <div><label class="fld">Chave PIX (pagamentos)</label><input id="nePix" placeholder="CPF, celular ou e-mail"></div>
+      <div><label class="fld">Endereço</label><input id="neEnd" placeholder="rua, nº, bairro"></div>
+      <div><label class="fld">Contato de emergência</label><input id="neEmgN" placeholder="nome (parentesco)"></div>
+      <div><label class="fld">Tel. de emergência</label><input id="neEmgT" placeholder="(67) 9…"></div>
+      <div><label class="fld">Observações</label><input id="neObs" placeholder="uniforme, restrições, acordos…"></div>
     </div>
     <button class="primary full" style="margin-top:12px" onclick="createEmp()">Cadastrar colaborador</button>
     <div class="hint">O colaborador entra na tela <b>👤 Equipe</b> com o <b>login</b> e o <b>PIN</b>. Entrada/saída definem a jornada do banco de horas (se vazios, vale o horário do turno). *A diária normal vem do turno (aba Escala); esta só é usada se o turno não tiver valor.</div></div>`;
@@ -1637,10 +1646,14 @@ async function createEmp(){
   const {data,error}=await sb.functions.invoke('admin-users',{body:{action:'create',name,cargo,role,login,pin,diaria,unit_id}});
   if(error||data?.error)return alert('Erro ao cadastrar: '+(data?.error||error.message));
   await loadAll();
-  // complementa o perfil com horário, salário e turno padrão
+  // complementa o perfil com horário, salário, turno e a ficha completa
   const novo=emps.find(e=>e.login===login.toLowerCase().replace(/[^a-z0-9._-]/g,''));
-  if(novo&&(ent||sai||salario||wshift)){
-    await sb.from('profiles').update({entrada:ent||null,saida:sai||null,salario,work_shift:wshift}).eq('user_id',novo.user_id);
+  if(novo){
+    await sb.from('profiles').update({entrada:ent||null,saida:sai||null,salario,work_shift:wshift,
+      cpf:val('neCpf')||null,nascimento:document.getElementById('neNasc').value||null,
+      telefone:val('neTel')||null,admissao:document.getElementById('neAdm').value||null,
+      pix:val('nePix')||null,endereco:val('neEnd')||null,
+      emergencia_nome:val('neEmgN')||null,emergencia_tel:val('neEmgT')||null,obs:val('neObs')||null}).eq('user_id',novo.user_id);
     await loadAll();
   }
   alert('Colaborador cadastrado!\nLogin: '+login+'\nPIN: '+pin);
